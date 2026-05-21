@@ -34,7 +34,7 @@ const CLIENTS = [
 const fmtPrice = (p) => p == null ? "TBC" : `£${p}`;
 const fmtDate = (d) => { if (!d) return "—"; return new Date(d+"T12:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"}); };
 const TODAY = new Date().toISOString().slice(0,10);
-const LOGO = "/4ABCF133-889E-453B-8006-796F3B9F78CD.png";
+const LOGO = "/12C57DA1-A499-4588-9F33-95F22BA7C03A.png";
 const PIN = "2607";
 
 const addDays = (dateStr, days) => {
