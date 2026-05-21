@@ -34,13 +34,14 @@ const CLIENTS = [
 const fmtPrice = (p) => p == null ? "TBC" : `£${p}`;
 const fmtDate = (d) => { if (!d) return "—"; return new Date(d+"T12:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"}); };
 const TODAY = new Date().toISOString().slice(0,10);
+const LOGO = "/4ABCF133-889E-453B-8006-796F3B9F78CD.png";
+const PIN = "2607";
 
 const addDays = (dateStr, days) => {
   const d = new Date(dateStr+"T12:00:00");
   d.setDate(d.getDate()+days);
   return d.toISOString().slice(0,10);
 };
-
 const nextVisitDate = (lastVisit, frequency) => {
   if (!lastVisit) return "";
   const map = { Weekly:7, Fortnightly:14, Monthly:30, "One-off":null };
@@ -52,7 +53,7 @@ const nextVisitDate = (lastVisit, frequency) => {
 const G = "#1a6b3c";
 const styles = {
   app: { fontFamily:"system-ui,sans-serif", background:"#f8fafc", minHeight:"100vh", paddingBottom:80 },
-  topbar: { background:"#fff", borderBottom:"1.5px solid #e2e8f0", padding:"12px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, zIndex:100 },
+  topbar: { background:"#fff", borderBottom:"1.5px solid #e2e8f0", padding:"10px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, zIndex:100 },
   logo: { fontWeight:800, fontSize:18, color:G, letterSpacing:-0.5 },
   content: { padding:"16px" },
   bottomnav: { position:"fixed", bottom:0, left:0, right:0, background:"#fff", borderTop:"1.5px solid #e2e8f0", display:"flex", justifyContent:"space-around", padding:"8px 0 16px", zIndex:100 },
@@ -62,8 +63,6 @@ const styles = {
   btn: (bg,color) => ({ background:bg, color:color, border:"none", borderRadius:10, padding:"9px 16px", fontWeight:600, fontSize:13, cursor:"pointer", display:"inline-flex", alignItems:"center", gap:6 }),
   input: { background:"#f1f5f9", border:"1.5px solid #e2e8f0", borderRadius:10, padding:"9px 12px", fontSize:14, width:"100%", outline:"none", boxSizing:"border-box", marginBottom:10 },
   label: { fontSize:12, fontWeight:600, color:"#64748b", display:"block", marginBottom:4 },
-  h2: { fontSize:20, fontWeight:800, marginBottom:4, color:"#0f172a" },
-  h3: { fontSize:16, fontWeight:700, marginBottom:12, color:"#0f172a" },
   row: { display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:"1px solid #f1f5f9" },
 };
 
@@ -74,8 +73,8 @@ const RevisitBadge = ({status, pending}) => {
   return <span style={styles.badge(s.c,s.bg)}>{s.l}</span>;
 };
 
-const blankClient = (existingCount) => ({
-  id: `MG${String(existingCount+1).padStart(3,"0")}`,
+const blankClient = (count) => ({
+  id:`MG${String(count+1).padStart(3,"0")}`,
   source:"MG", name:"", address:"", phone:"", area:"",
   jobType:"Garden Maintenance", price:"", frequency:"Monthly",
   lastVisit:"", nextVisit:"", revisitStatus:"confirmed",
@@ -83,7 +82,52 @@ const blankClient = (existingCount) => ({
   duration:60, chrisCut:false,
 });
 
+const LockScreen = ({ onUnlock }) => {
+  const [pin, setPin] = useState("");
+  const [error, setError] = useState(false);
+
+  const handleKey = (k) => {
+    if (k === "del") {
+      setPin(p => p.slice(0,-1));
+      setError(false);
+      return;
+    }
+    const next = pin + k;
+    setPin(next);
+    if (next.length === 4) {
+      if (next === PIN) {
+        onUnlock();
+      } else {
+        setError(true);
+        setTimeout(() => { setPin(""); setError(false); }, 800);
+      }
+    }
+  };
+
+  return (
+    <div style={{ minHeight:"100vh", background:"#0f1a14", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:24 }}>
+      <img src={LOGO} alt="moegardens" style={{ width:160, marginBottom:24, borderRadius:16 }}/>
+      <div style={{ fontSize:14, color:"#94a3b8", marginBottom:32, fontWeight:500 }}>Enter PIN to continue</div>
+      <div style={{ display:"flex", gap:16, marginBottom:40 }}>
+        {[0,1,2,3].map(i => (
+          <div key={i} style={{ width:18, height:18, borderRadius:"50%", background: pin.length > i ? (error ? "#ef4444" : G) : "#2d3748", transition:"background .2s" }}/>
+        ))}
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, width:240 }}>
+        {["1","2","3","4","5","6","7","8","9","","0","del"].map((k,i) => (
+          k === "" ? <div key={i}/> :
+          <button key={i} onClick={() => handleKey(k)} style={{ background: k==="del" ? "#1e293b" : "#1a2e1e", color:"#fff", border:"none", borderRadius:14, padding:"18px 0", fontSize: k==="del" ? 16 : 22, fontWeight:700, cursor:"pointer", transition:"background .1s" }}>
+            {k === "del" ? "⌫" : k}
+          </button>
+        ))}
+      </div>
+      {error && <div style={{ color:"#ef4444", marginTop:20, fontWeight:600, fontSize:13 }}>Incorrect PIN</div>}
+    </div>
+  );
+};
+
 export default function App() {
+  const [unlocked, setUnlocked] = useState(false);
   const [clients, setClients] = useState(CLIENTS);
   const [page, setPage] = useState("dashboard");
   const [search, setSearch] = useState("");
@@ -94,7 +138,6 @@ export default function App() {
   const [toast, setToast] = useState(null);
 
   const showToast = (msg) => { setToast(msg); setTimeout(()=>setToast(null),2500); };
-
   const needsConfirmed = clients.filter(c => c.revisitStatus==="needs-confirmed" || c.visitPending);
   const active = clients.filter(c => c.revisitStatus !== "no");
 
@@ -106,14 +149,13 @@ export default function App() {
   });
 
   const markVisited = (id) => {
-    const visitDate = TODAY;
     setClients(prev => prev.map(c => {
       if (c.id !== id) return c;
-      const next = nextVisitDate(visitDate, c.frequency);
-      return { ...c, lastVisit:visitDate, nextVisit:next, visitPending:true, revisitStatus:"needs-confirmed" };
+      const next = nextVisitDate(TODAY, c.frequency);
+      return { ...c, lastVisit:TODAY, nextVisit:next, visitPending:true, revisitStatus:"needs-confirmed" };
     }));
     setSelected(null);
-    showToast("✅ Visit recorded — client moved to Revisits");
+    showToast("✅ Visit recorded — moved to Revisits");
   };
 
   const confirmRevisit = (id) => {
@@ -122,9 +164,8 @@ export default function App() {
   };
 
   const saveNewClient = () => {
-    if (!newClient.name.trim()) { showToast("⚠️ Please enter a client name"); return; }
-    const toSave = { ...newClient, price: newClient.price ? parseFloat(newClient.price) : null };
-    setClients(prev => [...prev, toSave]);
+    if (!newClient.name.trim()) { showToast("⚠️ Please enter a name"); return; }
+    setClients(prev => [...prev, { ...newClient, price: newClient.price ? parseFloat(newClient.price) : null }]);
     setAddingClient(false);
     setNewClient(null);
     showToast("✅ Client added!");
@@ -143,11 +184,13 @@ export default function App() {
     </div>
   );
 
+  if (!unlocked) return <LockScreen onUnlock={() => setUnlocked(true)} />;
+
   const AddClient = () => (
     <div>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
         <button style={styles.btn("#f1f5f9","#0f172a")} onClick={()=>{setAddingClient(false);setNewClient(null);}}>← Back</button>
-        <div style={styles.h2}>New Client</div>
+        <div style={{fontSize:20,fontWeight:800}}>New Client</div>
       </div>
       <div style={styles.card}>
         <div style={{fontSize:13,fontWeight:700,color:G,marginBottom:12}}>Contact Details</div>
@@ -176,7 +219,7 @@ export default function App() {
 
   const Dashboard = () => (
     <div>
-      <div style={{...styles.card,borderLeft:`4px solid ${G}`,marginBottom:10}}>
+      <div style={{...styles.card,borderLeft:`4px solid ${G}`}}>
         <div style={{fontSize:13,color:"#64748b",marginBottom:4}}>Total Clients</div>
         <div style={{fontSize:36,fontWeight:800,color:G}}>{clients.length}</div>
       </div>
@@ -192,7 +235,7 @@ export default function App() {
       </div>
       {needsConfirmed.length>0&&(
         <div style={{...styles.card,marginBottom:10}}>
-          <div style={styles.h3}>⏳ Pending Revisit Confirmation</div>
+          <div style={{fontSize:16,fontWeight:700,marginBottom:12}}>⏳ Pending Revisit</div>
           {needsConfirmed.slice(0,5).map(c=>(
             <div key={c.id} style={styles.row} onClick={()=>{setSelected(c);setPage("clients");}}>
               <div>
@@ -209,10 +252,10 @@ export default function App() {
         </div>
       )}
       <div style={styles.card}>
-        <div style={styles.h3}>Quick Actions</div>
+        <div style={{fontSize:16,fontWeight:700,marginBottom:12}}>Quick Actions</div>
         <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
           <button style={styles.btn(G,"#fff")} onClick={()=>{setNewClient(blankClient(clients.length));setAddingClient(true);setPage("clients");}}>➕ Add Client</button>
-          <button style={styles.btn("#f1f5f9","#0f172a")} onClick={()=>setPage("clients")}>👥 All Clients</button>
+          <button style={styles.btn("#f1f5f9","#0f172a")} onClick={()=>setPage("clients")}>👥 Clients</button>
           <button style={styles.btn("#fef9c3","#b45309")} onClick={()=>setPage("revisits")}>⏳ Revisits</button>
           <button style={styles.btn("#f1f5f9","#0f172a")} onClick={()=>setPage("payments")}>💷 Payments</button>
         </div>
@@ -269,13 +312,9 @@ export default function App() {
       </div>
       {c.notes&&<div style={styles.card}><div style={{fontSize:12,color:"#64748b",marginBottom:4}}>Notes</div><div style={{fontSize:13}}>{c.notes}</div></div>}
       <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:4}}>
-        <button style={styles.btn("#dcfce7","#16a34a")} onClick={()=>markVisited(c.id)}>
-          ✅ Mark Visited Today
-        </button>
-        {c.visitPending&&(
-          <button style={styles.btn(G,"#fff")} onClick={()=>confirmRevisit(c.id)}>
-            🔄 Confirm Revisit
-          </button>
+        <button style={styles.btn("#dcfce7","#16a34a")} onClick={()=>markVisited(c.id)}>✅ Mark Visited Today</button>
+        {(c.visitPending||c.revisitStatus==="needs-confirmed")&&(
+          <button style={styles.btn(G,"#fff")} onClick={()=>confirmRevisit(c.id)}>🔄 Confirm Revisit</button>
         )}
         {c.phone&&<a href={`tel:${c.phone}`} style={{...styles.btn("#f1f5f9","#0f172a"),textDecoration:"none"}}>📞 Call</a>}
       </div>
@@ -284,7 +323,7 @@ export default function App() {
 
   const Revisits = () => (
     <div>
-      <div style={{fontSize:13,color:"#64748b",marginBottom:14}}>{needsConfirmed.length} clients pending revisit confirmation</div>
+      <div style={{fontSize:13,color:"#64748b",marginBottom:14}}>{needsConfirmed.length} clients pending confirmation</div>
       {needsConfirmed.length===0&&(
         <div style={{textAlign:"center",padding:"40px 0",color:"#64748b"}}>
           <div style={{fontSize:40}}>✅</div>
@@ -301,7 +340,7 @@ export default function App() {
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
             {c.phone&&<a href={`tel:${c.phone}`} style={{...styles.btn(G,"#fff"),textDecoration:"none",fontSize:12}}>📞 Call</a>}
             <button style={styles.btn("#dcfce7","#16a34a")} onClick={()=>confirmRevisit(c.id)}>✅ Confirm Revisit</button>
-            <button style={styles.btn("#f1f5f9","#0f172a")} onClick={()=>setSelected(c)}>View</button>
+            <button style={styles.btn("#f1f5f9","#0f172a")} onClick={()=>{setSelected(c);setPage("clients");}}>View</button>
           </div>
         </div>
       ))}
@@ -318,7 +357,7 @@ export default function App() {
           <div style={{...styles.card,borderLeft:"4px solid #16a34a"}}><div style={{fontSize:12,color:"#64748b"}}>Collected</div><div style={{fontSize:26,fontWeight:800,color:"#16a34a"}}>£{paid.reduce((s,c)=>s+(c.price||0),0)}</div></div>
           <div style={{...styles.card,borderLeft:"4px solid #dc2626"}}><div style={{fontSize:12,color:"#64748b"}}>Outstanding</div><div style={{fontSize:26,fontWeight:800,color:"#dc2626"}}>£{unpaid.reduce((s,c)=>s+(c.price||0),0)}</div></div>
         </div>
-        <div style={styles.h3}>⚠️ Outstanding</div>
+        <div style={{fontSize:16,fontWeight:700,marginBottom:12}}>⚠️ Outstanding</div>
         {unpaid.map(c=>(
           <div key={c.id} style={styles.card}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -342,13 +381,16 @@ export default function App() {
     {id:"payments",icon:"💷",label:"Payments"},
   ];
 
-  const pageTitles = {dashboard:"moegardens 🌿",clients:"Clients",revisits:"Revisits",payments:"Payments"};
+  const pageTitles = {dashboard:"Home",clients:"Clients",revisits:"Revisits",payments:"Payments"};
 
   return (
     <div style={styles.app}>
       <div style={styles.topbar}>
-        <div style={styles.logo}>{pageTitles[page]||"moegardens 🌿"}</div>
-        {needsConfirmed.length>0&&<span style={styles.badge("#b45309","#fef9c3")}>⏳ {needsConfirmed.length}</span>}
+        <div style={styles.logo}>moegardens 🌿</div>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          {needsConfirmed.length>0&&<span style={styles.badge("#b45309","#fef9c3")}>⏳ {needsConfirmed.length}</span>}
+          <img src={LOGO} alt="logo" style={{width:38,height:38,borderRadius:8,objectFit:"contain"}}/>
+        </div>
       </div>
       <div style={styles.content}>
         {addingClient ? <AddClient/> :
