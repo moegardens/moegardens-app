@@ -1,0 +1,251 @@
+import { useState } from "react";
+
+const CLIENTS = [
+  { id:"CCG001", source:"CCG", name:"Louise Bridget", address:"Balerno Rugby Club", phone:"", area:"Balerno", jobType:"Grounds Maintenance", price:50, frequency:"Monthly", lastVisit:"", nextVisit:"", revisitStatus:"confirmed", notes:"", paymentStatus:"paid", duration:120, chrisCut:true },
+  { id:"CCG002", source:"CCG", name:"Daniel Sloss", address:"", phone:"", area:"", jobType:"Garden Maintenance", price:null, frequency:"Monthly", lastVisit:"", nextVisit:"", revisitStatus:"confirmed", notes:"Price TBC", paymentStatus:"unpaid", duration:60, chrisCut:true },
+  { id:"CCG003", source:"CCG", name:"Bravelaw Estate", address:"", phone:"+1 (713) 256-3101", area:"", jobType:"Grounds Maintenance", price:300, frequency:"Monthly", lastVisit:"", nextVisit:"", revisitStatus:"confirmed", notes:"", paymentStatus:"paid", duration:480, chrisCut:true },
+  { id:"CCG004", source:"CCG", name:"Chris Mum", address:"", phone:"", area:"", jobType:"Garden Maintenance", price:20, frequency:"Monthly", lastVisit:"", nextVisit:"", revisitStatus:"confirmed", notes:"", paymentStatus:"paid", duration:60, chrisCut:true },
+  { id:"CCG005", source:"CCG", name:"Chris", address:"", phone:"", area:"", jobType:"Garden Maintenance", price:30, frequency:"Monthly", lastVisit:"", nextVisit:"", revisitStatus:"confirmed", notes:"", paymentStatus:"paid", duration:60, chrisCut:true },
+  { id:"CCG006", source:"CCG", name:"Forrester Flats", address:"", phone:"", area:"Forrester", jobType:"Grounds Maintenance", price:null, frequency:"Monthly", lastVisit:"", nextVisit:"", revisitStatus:"confirmed", notes:"Price TBC", paymentStatus:"unpaid", duration:180, chrisCut:true },
+  { id:"CCG007", source:"CCG", name:"Chris Granny", address:"", phone:"", area:"", jobType:"Garden Maintenance", price:40, frequency:"Monthly", lastVisit:"", nextVisit:"", revisitStatus:"confirmed", notes:"", paymentStatus:"paid", duration:90, chrisCut:true },
+  { id:"CCG008", source:"CCG", name:"Parkhead", address:"", phone:"", area:"Parkhead", jobType:"Grounds Maintenance", price:40, frequency:"Monthly", lastVisit:"", nextVisit:"", revisitStatus:"confirmed", notes:"", paymentStatus:"paid", duration:120, chrisCut:true },
+  { id:"CCG009", source:"CCG", name:"Jane", address:"13 Langton View, East Calder, EH53 0LE", phone:"", area:"East Calder", jobType:"Garden Maintenance", price:30, frequency:"Monthly", lastVisit:"", nextVisit:"", revisitStatus:"confirmed", notes:"", paymentStatus:"paid", duration:90, chrisCut:true },
+  { id:"CCG010", source:"CCG", name:"Margret", address:"", phone:"", area:"", jobType:"Garden Maintenance", price:null, frequency:"Monthly", lastVisit:"", nextVisit:"", revisitStatus:"confirmed", notes:"", paymentStatus:"unpaid", duration:60, chrisCut:true },
+  { id:"CCG011", source:"CCG", name:"Illi", address:"", phone:"", area:"", jobType:"Garden Maintenance", price:null, frequency:"Monthly", lastVisit:"", nextVisit:"", revisitStatus:"confirmed", notes:"", paymentStatus:"unpaid", duration:60, chrisCut:true },
+  { id:"CCG012", source:"CCG", name:"Palm", address:"", phone:"", area:"", jobType:"Garden Maintenance", price:null, frequency:"Monthly", lastVisit:"", nextVisit:"", revisitStatus:"confirmed", notes:"", paymentStatus:"unpaid", duration:60, chrisCut:true },
+  { id:"CCG013", source:"CCG", name:"Marrion", address:"", phone:"", area:"", jobType:"Garden Maintenance", price:null, frequency:"Monthly", lastVisit:"", nextVisit:"", revisitStatus:"confirmed", notes:"", paymentStatus:"unpaid", duration:60, chrisCut:true },
+  { id:"CCG014", source:"CCG", name:"Scout Hall Woman", address:"", phone:"", area:"", jobType:"Garden Maintenance", price:null, frequency:"Monthly", lastVisit:"", nextVisit:"", revisitStatus:"confirmed", notes:"", paymentStatus:"unpaid", duration:60, chrisCut:true },
+  { id:"CCG015", source:"CCG", name:"Fourth View Road Granny", address:"10 Fourth View Road", phone:"", area:"", jobType:"Garden Maintenance", price:null, frequency:"Monthly", lastVisit:"", nextVisit:"", revisitStatus:"confirmed", notes:"", paymentStatus:"unpaid", duration:60, chrisCut:true },
+  { id:"CCG016", source:"CCG", name:"Langwill Place Client", address:"5 Langwill Place, Currie, EH14 5NL", phone:"", area:"Currie", jobType:"Paving & Groundworks", price:null, frequency:"One-off", lastVisit:"", nextVisit:"", revisitStatus:"needs-confirmed", notes:"Grout and power wash", paymentStatus:"unpaid", duration:180, chrisCut:true },
+  { id:"CCG017", source:"CCG", name:"Marchbank Drive Client", address:"57 Marchbank Drive, Balerno, EH14 7ER", phone:"", area:"Balerno", jobType:"Garden Maintenance", price:null, frequency:"Monthly", lastVisit:"", nextVisit:"", revisitStatus:"needs-confirmed", notes:"", paymentStatus:"unpaid", duration:90, chrisCut:true },
+  { id:"CCG018", source:"CCG", name:"Johnsburn Road Client", address:"19 Johnsburn Road, Balerno, EH14 7DY", phone:"", area:"Balerno", jobType:"Garden Maintenance", price:null, frequency:"Monthly", lastVisit:"", nextVisit:"", revisitStatus:"needs-confirmed", notes:"", paymentStatus:"unpaid", duration:90, chrisCut:true },
+  { id:"CCG019", source:"CCG", name:"Riccarton Drive Client", address:"5 Riccarton Drive, Currie, EH14 5PN", phone:"", area:"Currie", jobType:"Garden Maintenance", price:null, frequency:"Monthly", lastVisit:"", nextVisit:"", revisitStatus:"needs-confirmed", notes:"", paymentStatus:"unpaid", duration:90, chrisCut:true },
+  { id:"MG001", source:"MG", name:"Russell Cairns", address:"20 Colinton Mains Grove, Edinburgh, EH13 9DQ", phone:"+44 7766 040233", area:"Colinton", jobType:"Garden Maintenance", price:null, frequency:"Fortnightly", lastVisit:"2026-04-28", nextVisit:"2026-05-26", revisitStatus:"confirmed", notes:"", paymentStatus:"paid", duration:90, chrisCut:false },
+  { id:"MG002", source:"MG", name:"Clare", address:"45 Willow Grove, Craigshill, Livingston, EH54 5NA", phone:"+44 7364 200875", area:"Livingston", jobType:"Garden Maintenance", price:null, frequency:"Fortnightly", lastVisit:"2026-05-01", nextVisit:"2026-05-29", revisitStatus:"confirmed", notes:"", paymentStatus:"paid", duration:90, chrisCut:false },
+  { id:"MG003", source:"MG", name:"Scott Murray", address:"4 Shiel Path, East Calder, EH53 0FS", phone:"", area:"East Calder", jobType:"Garden Maintenance", price:null, frequency:"Monthly", lastVisit:"2026-05-05", nextVisit:"2026-06-05", revisitStatus:"needs-confirmed", notes:"", paymentStatus:"unpaid", duration:90, chrisCut:false },
+  { id:"MG004", source:"MG", name:"Krishna Arekapudi", address:"83 Brodie Place, EH53 0TY", phone:"+44 7714 196963", area:"Livingston", jobType:"Garden Maintenance", price:null, frequency:"Monthly", lastVisit:"2026-05-04", nextVisit:"2026-06-04", revisitStatus:"needs-confirmed", notes:"", paymentStatus:"unpaid", duration:60, chrisCut:false },
+  { id:"MG005", source:"MG", name:"Mikey G", address:"311 Broomhouse Road, Edinburgh, EH11 3UP", phone:"+44 7398 237243", area:"Broomhouse", jobType:"Garden Maintenance", price:null, frequency:"Fortnightly", lastVisit:"2026-05-08", nextVisit:"2026-05-22", revisitStatus:"confirmed", notes:"", paymentStatus:"paid", duration:60, chrisCut:false },
+  { id:"MG006", source:"MG", name:"Sally McGregor", address:"43 Bonaly Crescent, Colinton, EH13 0EP", phone:"+44 7561 801380", area:"Colinton", jobType:"Garden Maintenance", price:null, frequency:"Fortnightly", lastVisit:"2026-05-11", nextVisit:"2026-05-25", revisitStatus:"confirmed", notes:"", paymentStatus:"paid", duration:120, chrisCut:false },
+  { id:"MG007", source:"MG", name:"Saravanan", address:"Lilybank Road, Ratho Station, EH28", phone:"+91 95919 98168", area:"Ratho Station", jobType:"Garden Maintenance", price:null, frequency:"Monthly", lastVisit:"2026-05-06", nextVisit:"2026-06-06", revisitStatus:"needs-confirmed", notes:"", paymentStatus:"unpaid", duration:90, chrisCut:false },
+  { id:"MG008", source:"MG", name:"Kirsty Campbell", address:"3 Lilybank Lane, Ratho Station, EH28 8AW", phone:"", area:"Ratho Station", jobType:"Garden Maintenance", price:null, frequency:"Monthly", lastVisit:"2026-05-15", nextVisit:"2026-06-15", revisitStatus:"needs-confirmed", notes:"", paymentStatus:"unpaid", duration:60, chrisCut:false },
+  { id:"MG009", source:"MG", name:"poorimitlaprakash", address:"20 Lilybank Road, Ratho Station, EH28", phone:"+44 7448 950184", area:"Ratho Station", jobType:"Garden Maintenance", price:null, frequency:"Monthly", lastVisit:"2026-05-15", nextVisit:"2026-06-15", revisitStatus:"needs-confirmed", notes:"", paymentStatus:"unpaid", duration:60, chrisCut:false },
+];
+
+const fmtPrice = (p) => p == null ? "TBC" : `£${p}`;
+const fmtDate = (d) => { if (!d) return "—"; return new Date(d+"T12:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"}); };
+const TODAY = "2026-05-21";
+
+const G = "#1a6b3c";
+const styles = {
+  app: { fontFamily:"system-ui,sans-serif", background:"#f8fafc", minHeight:"100vh", paddingBottom:70 },
+  topbar: { background:"#fff", borderBottom:"1.5px solid #e2e8f0", padding:"12px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, zIndex:100 },
+  logo: { fontWeight:800, fontSize:18, color:G, letterSpacing:-0.5 },
+  content: { padding:"16px" },
+  bottomnav: { position:"fixed", bottom:0, left:0, right:0, background:"#fff", borderTop:"1.5px solid #e2e8f0", display:"flex", justifyContent:"space-around", padding:"8px 0 16px", zIndex:100 },
+  navbtn: { background:"none", border:"none", display:"flex", flexDirection:"column", alignItems:"center", gap:3, fontSize:10, fontWeight:600, cursor:"pointer", padding:"4px 12px" },
+  card: { background:"#fff", borderRadius:14, border:"1.5px solid #e2e8f0", padding:"14px 16px", marginBottom:10 },
+  badge: (color,bg) => ({ display:"inline-block", background:bg, color:color, borderRadius:20, padding:"2px 9px", fontSize:11, fontWeight:600 }),
+  btn: (bg,color) => ({ background:bg, color:color, border:"none", borderRadius:10, padding:"9px 16px", fontWeight:600, fontSize:13, cursor:"pointer", display:"inline-flex", alignItems:"center", gap:6 }),
+  input: { background:"#f1f5f9", border:"1.5px solid #e2e8f0", borderRadius:10, padding:"9px 12px", fontSize:14, width:"100%", outline:"none", boxSizing:"border-box" },
+  label: { fontSize:12, fontWeight:600, color:"#64748b", display:"block", marginBottom:4 },
+  h2: { fontSize:20, fontWeight:800, marginBottom:4, color:"#0f172a" },
+  h3: { fontSize:16, fontWeight:700, marginBottom:12, color:"#0f172a" },
+  row: { display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:"1px solid #f1f5f9" },
+};
+
+const RevisitBadge = ({status}) => {
+  const m = { confirmed:{c:"#16a34a",bg:"#dcfce7",l:"Confirmed"}, "needs-confirmed":{c:"#b45309",bg:"#fef9c3",l:"Needs Confirmed"}, no:{c:"#dc2626",bg:"#fee2e2",l:"No Revisit"} };
+  const s = m[status]||m.confirmed;
+  return <span style={styles.badge(s.c,s.bg)}>{s.l}</span>;
+};export default function App() {
+  const [clients, setClients] = useState(CLIENTS);
+  const [page, setPage] = useState("dashboard");
+  const [search, setSearch] = useState("");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [selected, setSelected] = useState(null);
+  const [editing, setEditing] = useState(null);
+
+  const needsConfirmed = clients.filter(c => c.revisitStatus === "needs-confirmed");
+  const active = clients.filter(c => c.revisitStatus !== "no");
+
+  const filtered = clients.filter(c => {
+    const q = search.toLowerCase();
+    const mq = !q || c.name.toLowerCase().includes(q) || (c.area||"").toLowerCase().includes(q);
+    const ms = filterStatus === "all" || c.revisitStatus === filterStatus;
+    return mq && ms;
+  });
+
+  const Dashboard = () => (
+    <div>
+      <div style={{...styles.card, borderLeft:`4px solid ${G}`}}>
+        <div style={{fontSize:13,color:"#64748b",marginBottom:4}}>Total Clients</div>
+        <div style={{fontSize:36,fontWeight:800,color:G}}>{clients.length}</div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+        <div style={styles.card}>
+          <div style={{fontSize:12,color:"#64748b"}}>Needs Confirmed</div>
+          <div style={{fontSize:28,fontWeight:800,color:"#f59e0b"}}>{needsConfirmed.length}</div>
+        </div>
+        <div style={styles.card}>
+          <div style={{fontSize:12,color:"#64748b"}}>Active</div>
+          <div style={{fontSize:28,fontWeight:800,color:G}}>{active.length}</div>
+        </div>
+      </div>
+      <div style={{...styles.card,marginBottom:10}}>
+        <div style={styles.h3}>⚠️ Needs Confirmation</div>
+        {needsConfirmed.map(c => (
+          <div key={c.id} style={styles.row} onClick={()=>{setSelected(c);setPage("clients");}}>
+            <div>
+              <div style={{fontWeight:700,fontSize:14}}>{c.name}</div>
+              <div style={{fontSize:12,color:"#64748b"}}>{c.area||"—"}</div>
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              {c.phone && <a href={`tel:${c.phone}`} onClick={e=>e.stopPropagation()} style={{color:G,fontSize:13}}>📞</a>}
+              <span style={{color:"#94a3b8"}}>›</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={styles.card}>
+        <div style={styles.h3}>Quick Actions</div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+          <button style={styles.btn(G,"#fff")} onClick={()=>setPage("clients")}>👥 Clients</button>
+          <button style={styles.btn("#f1f5f9","#0f172a")} onClick={()=>setPage("revisits")}>🔄 Revisits</button>
+          <button style={styles.btn("#f1f5f9","#0f172a")} onClick={()=>setPage("payments")}>💷 Payments</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const ClientList = () => (
+    <div>
+      <div style={{marginBottom:12}}>
+        <input style={styles.input} placeholder="Search clients..." value={search} onChange={e=>setSearch(e.target.value)}/>
+      </div>
+      <div style={{display:"flex",gap:8,marginBottom:14,overflowX:"auto",paddingBottom:4}}>
+        {["all","confirmed","needs-confirmed","no"].map(s=>(
+          <button key={s} onClick={()=>setFilterStatus(s)} style={{...styles.btn(filterStatus===s?G:"#f1f5f9",filterStatus===s?"#fff":"#64748b"),whiteSpace:"nowrap",fontSize:12,padding:"6px 12px"}}>
+            {s==="all"?"All":s==="confirmed"?"✅ Confirmed":s==="needs-confirmed"?"⚠️ Pending":"❌ No Revisit"}
+          </button>
+        ))}
+      </div>
+      <div style={{fontSize:12,color:"#64748b",marginBottom:10}}>{filtered.length} clients</div>
+      {filtered.map(c => (
+        <div key={c.id} style={styles.card} onClick={()=>setSelected(c)}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+            <div style={{fontWeight:700,fontSize:15}}>{c.name}</div>
+            <RevisitBadge status={c.revisitStatus}/>
+          </div>
+          <div style={{fontSize:12,color:"#64748b",marginBottom:6}}>{c.area||c.address?.slice(0,30)||"No address"}</div>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <span style={{fontSize:12,background:"#f1f5f9",borderRadius:6,padding:"2px 8px"}}>{c.source==="MG"?"🌿 MG":"🔧 CCG"}</span>
+            <span style={{fontSize:12,background:"#f1f5f9",borderRadius:6,padding:"2px 8px"}}>{c.frequency}</span>
+            <span style={{fontWeight:700,color:G,marginLeft:"auto"}}>{fmtPrice(c.price)}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  const ClientDetail = ({c}) => (
+    <div>
+      <button style={{...styles.btn("#f1f5f9","#0f172a"),marginBottom:16}} onClick={()=>setSelected(null)}>← Back</button>
+      <div style={{...styles.card,borderLeft:`4px solid ${G}`,marginBottom:10}}>
+        <div style={{fontSize:20,fontWeight:800,marginBottom:6}}>{c.name}</div>
+        <RevisitBadge status={c.revisitStatus}/>
+      </div>
+      <div style={styles.card}>
+        {[["ID",c.id],["Source",c.source==="MG"?"Moegardens":"Chris Cavens"],["Area",c.area||"—"],["Phone",c.phone||"—"],["Address",c.address||"—"],["Job Type",c.jobType],["Price",fmtPrice(c.price)],["Frequency",c.frequency],["Last Visit",fmtDate(c.lastVisit)],["Next Visit",fmtDate(c.nextVisit)],["Payment",c.paymentStatus],["Duration",`${c.duration} mins`],["Chris Cut",c.chrisCut?"Yes":"No"]].map(([k,v])=>(
+          <div key={k} style={styles.row}>
+            <span style={{fontSize:13,color:"#64748b"}}>{k}</span>
+            <span style={{fontSize:13,fontWeight:600,maxWidth:180,textAlign:"right"}}>{v}</span>
+          </div>
+        ))}
+      </div>
+      {c.notes && <div style={styles.card}><div style={{fontSize:12,color:"#64748b",marginBottom:4}}>Notes</div><div style={{fontSize:13}}>{c.notes}</div></div>}
+      <div style={{display:"flex",gap:8,marginTop:4}}>
+        <button style={styles.btn(G,"#fff")} onClick={()=>{setEditing({...c});setSelected(null);}}>✏️ Edit</button>
+        <button style={styles.btn("#dcfce7","#16a34a")} onClick={()=>{setClients(p=>p.map(x=>x.id===c.id?{...x,revisitStatus:"confirmed"}:x));setSelected(null);}}>✅ Confirm</button>
+      </div>
+    </div>
+  );
+
+  const Revisits = () => (
+    <div>
+      <div style={{fontSize:13,color:"#64748b",marginBottom:14}}>{needsConfirmed.length} clients awaiting confirmation</div>
+      {needsConfirmed.map(c=>(
+        <div key={c.id} style={{...styles.card,borderLeft:"3px solid #f59e0b"}}>
+          <div style={{fontWeight:700,fontSize:15,marginBottom:4}}>{c.name}</div>
+          <div style={{fontSize:12,color:"#64748b",marginBottom:8}}>{c.address||c.area||"—"}</div>
+          <div style={{fontSize:12,color:"#64748b",marginBottom:10}}>Last visit: {fmtDate(c.lastVisit)}</div>
+          <div style={{display:"flex",gap:8}}>
+            {c.phone&&<a href={`tel:${c.phone}`} style={{...styles.btn(G,"#fff"),textDecoration:"none",fontSize:12}}>📞 Call</a>}
+            <button style={styles.btn("#dcfce7","#16a34a")} onClick={()=>setClients(p=>p.map(x=>x.id===c.id?{...x,revisitStatus:"confirmed"}:x))}>✅ Confirm</button>
+            <button style={styles.btn("#f1f5f9","#0f172a")} onClick={()=>setSelected(c)}>View</button>
+          </div>
+        </div>
+      ))}
+      {needsConfirmed.length===0&&<div style={{textAlign:"center",padding:"40px 0",color:"#64748b"}}><div style={{fontSize:40}}>✅</div><div style={{fontWeight:600,marginTop:8}}>All confirmed!</div></div>}
+    </div>
+  );
+
+  const Payments = () => {
+    const withPrice = clients.filter(c=>c.price);
+    const paid = withPrice.filter(c=>c.paymentStatus==="paid");
+    const unpaid = withPrice.filter(c=>c.paymentStatus==="unpaid");
+    return (
+      <div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+          <div style={{...styles.card,borderLeft:"4px solid #16a34a"}}><div style={{fontSize:12,color:"#64748b"}}>Paid</div><div style={{fontSize:26,fontWeight:800,color:"#16a34a"}}>£{paid.reduce((s,c)=>s+(c.price||0),0)}</div></div>
+          <div style={{...styles.card,borderLeft:"4px solid #dc2626"}}><div style={{fontSize:12,color:"#64748b"}}>Outstanding</div><div style={{fontSize:26,fontWeight:800,color:"#dc2626"}}>£{unpaid.reduce((s,c)=>s+(c.price||0),0)}</div></div>
+        </div>
+        <div style={styles.h3}>⚠️ Outstanding</div>
+        {unpaid.map(c=>(
+          <div key={c.id} style={styles.card}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div><div style={{fontWeight:700}}>{c.name}</div><div style={{fontSize:12,color:"#64748b"}}>{c.area||"—"}</div></div>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontWeight:800,color:"#dc2626"}}>£{c.price}</span>
+                <button style={styles.btn(G,"#fff")} onClick={()=>setClients(p=>p.map(x=>x.id===c.id?{...x,paymentStatus:"paid"}:x))}>Paid</button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const navItems = [
+    {id:"dashboard",icon:"🏠",label:"Home"},
+    {id:"clients",icon:"👥",label:"Clients"},
+    {id:"revisits",icon:"🔄",label:"Revisits"},
+    {id:"payments",icon:"💷",label:"Payments"},
+  ];
+
+  const pageTitle = {dashboard:"moegardens 🌿",clients:"Clients",revisits:"Revisits",payments:"Payments"};
+
+  return (
+    <div style={styles.app}>
+      <div style={styles.topbar}>
+        <div style={styles.logo}>{pageTitle[page]||"moegardens 🌿"}</div>
+        {needsConfirmed.length>0&&<span style={styles.badge("#b45309","#fef9c3")}>⚠️ {needsConfirmed.length}</span>}
+      </div>
+      <div style={styles.content}>
+        {selected ? <ClientDetail c={selected}/> :
+         page==="dashboard" ? <Dashboard/> :
+         page==="clients" ? <ClientList/> :
+         page==="revisits" ? <Revisits/> :
+         page==="payments" ? <Payments/> : <Dashboard/>}
+      </div>
+      <div style={styles.bottomnav}>
+        {navItems.map(n=>(
+          <button key={n.id} style={{...styles.navbtn,color:page===n.id?G:"#94a3b8"}} onClick={()=>{setSelected(null);setPage(n.id);}}>
+            <span style={{fontSize:20}}>{n.icon}</span>
+            <span>{n.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
