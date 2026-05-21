@@ -386,7 +386,8 @@ export default function App() {
   return (
     <div style={styles.app}>
       <div style={styles.topbar}>
-        <div style={styles.logo}>moegardens 🌿</div>
+        <img src={LOGO} alt="moegardens" style={{height:40, objectFit:"contain"}}/>
+
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           {needsConfirmed.length>0&&<span style={styles.badge("#b45309","#fef9c3")}>⏳ {needsConfirmed.length}</span>}
           <img src={LOGO} alt="logo" style={{width:38,height:38,borderRadius:8,objectFit:"contain"}}/>
