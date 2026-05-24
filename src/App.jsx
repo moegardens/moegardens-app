@@ -1,7 +1,43 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 
-const CLIENTS_KEY = "mg_clients_v3";
-const VISITS_KEY = "mg_visits_v1";
+const SUPABASE_URL = "https://jfynkbgjcjlxncmbcfoi.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpmeW5rYmdqY2pseG5jbWJjZm9pIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2MjE1MzEsImV4cCI6MjA5NTE5NzUzMX0.T-IuErjxUCP3j-zYvjjt3tJKV0PBA6CZ6eZMKxJIoeU";
+
+const db = {
+  async getClients() {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/clients?order=name`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } });
+    return r.json();
+  },
+  async saveClient(c) {
+    await fetch(`${SUPABASE_URL}/rest/v1/clients`, {
+      method: "POST", headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" },
+      body: JSON.stringify({ id:c.id, source:c.source, name:c.name, address:c.address, phone:c.phone, area:c.area, job_type:c.jobType, price:c.price, frequency:c.frequency, last_visit:c.lastVisit, confirmation_status:c.confirmationStatus, is_paused:c.isPaused, notes:c.notes, access_notes:c.accessNotes, duration:c.duration, chris_cut:c.chrisCut, active:c.active, visit_history:c.visitHistory||[], tags:c.tags||[] })
+    });
+  },
+  async deleteClient(id) {
+    await fetch(`${SUPABASE_URL}/rest/v1/clients?id=eq.${id}`, { method: "DELETE", headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } });
+  },
+  async getVisits() {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/visits?order=visit_date.desc`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } });
+    return r.json();
+  },
+  async saveVisit(v) {
+    await fetch(`${SUPABASE_URL}/rest/v1/visits`, {
+      method: "POST", headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" },
+      body: JSON.stringify({ id:v.id, client_id:v.clientId, client_name:v.clientName, visit_date:v.visitDate, price:v.price, payment_status:v.paymentStatus, payment_method:v.paymentMethod, payment_date:v.paymentDate, notes:v.notes||"" })
+    });
+  },
+  async updateVisit(id, updates) {
+    await fetch(`${SUPABASE_URL}/rest/v1/visits?id=eq.${id}`, {
+      method: "PATCH", headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify(updates)
+    });
+  },
+};
+
+const fromDb = (c) => ({ id:c.id, source:c.source, name:c.name, address:c.address||"", phone:c.phone||"", area:c.area||"", jobType:c.job_type||"Garden Maintenance", price:c.price, frequency:c.frequency||"Every 2 Weeks", lastVisit:c.last_visit||"", confirmationStatus:c.confirmation_status||"confirmed", isPaused:c.is_paused||false, notes:c.notes||"", accessNotes:c.access_notes||"", duration:c.duration||60, chrisCut:c.chris_cut||false, active:c.active!==false, visitHistory:c.visit_history||[], tags:c.tags||[] });
+const visitFromDb = (v) => ({ id:v.id, clientId:v.client_id, clientName:v.client_name, visitDate:v.visit_date, price:v.price, paymentStatus:v.payment_status||"unpaid", paymentMethod:v.payment_method, paymentDate:v.payment_date, notes:v.notes||"" });
+
 const G = "#1a6b3c";
 const AMBER = "#f59e0b";
 const RED = "#dc2626";
@@ -21,135 +57,69 @@ const FREQUENCIES = Object.keys(FREQ_CONFIG);
 const DEFAULT_FREQ = "Every 2 Weeks";
 const JOB_TYPES = ["Garden Maintenance","Grounds Maintenance","Lawn Care","Hedge Trimming","Paving & Groundworks","Tree Work","One-off Clear","Other"];
 const PAYMENT_METHODS = ["Cash","Bank Transfer","Card","Other"];
-
 const TODAY = new Date().toISOString().slice(0,10);
 
-const addDays = (dateStr, days) => {
-  if (!dateStr || !days) return "";
-  const d = new Date(dateStr + "T12:00:00");
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0,10);
-};
-const daysBetween = (a, b) => {
-  if (!a || !b) return null;
-  return Math.round((new Date(b+"T12:00:00") - new Date(a+"T12:00:00")) / 86400000);
-};
-const fmtDate = (d) => {
-  if (!d) return "—";
-  return new Date(d+"T12:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});
-};
-const fmtPrice = (p) => p == null ? "TBC" : `£${p}`;
+const addDays = (dateStr, days) => { if(!dateStr||!days) return ""; const d=new Date(dateStr+"T12:00:00"); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10); };
+const daysBetween = (a,b) => { if(!a||!b) return null; return Math.round((new Date(b+"T12:00:00")-new Date(a+"T12:00:00"))/86400000); };
+const fmtDate = (d) => { if(!d) return "—"; return new Date(d+"T12:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"}); };
+const fmtPrice = (p) => p==null?"TBC":`£${p}`;
+const makeId = () => `v_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
+const thisWeekStart = () => { const d=new Date(TODAY+"T12:00:00"); const day=d.getDay(); d.setDate(d.getDate()-(day===0?6:day-1)); return d.toISOString().slice(0,10); };
+const thisMonthStart = () => TODAY.slice(0,7)+"-01";
 
-const thisWeekStart = () => {
-  const d = new Date(TODAY+"T12:00:00");
-  const day = d.getDay();
-  const diff = d.getDate() - (day===0?6:day-1);
-  d.setDate(diff);
-  return d.toISOString().slice(0,10);
-};
-const thisMonthStart = () => TODAY.slice(0,7) + "-01";
-
-const makeVisitId = () => `v_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
-
-const calcSchedule = (client) => {
-  const freq = client.frequency || DEFAULT_FREQ;
-  const days = FREQ_CONFIG[freq]?.days || 14;
-  const lastVisit = client.lastVisit || null;
-  const nextVisit = lastVisit ? addDays(lastVisit, days) : "";
-  const daysSinceVisit = lastVisit ? daysBetween(lastVisit, TODAY) : null;
+const calcSchedule = (c) => {
+  const days = FREQ_CONFIG[c.frequency]?.days || 14;
+  const nextVisit = c.lastVisit ? addDays(c.lastVisit, days) : "";
+  const daysSinceVisit = c.lastVisit ? daysBetween(c.lastVisit, TODAY) : null;
   const daysUntilDue = nextVisit ? daysBetween(TODAY, nextVisit) : null;
-  const overdueDays = daysUntilDue !== null && daysUntilDue < 0 ? Math.abs(daysUntilDue) : 0;
-
+  const overdueDays = daysUntilDue!==null&&daysUntilDue<0 ? Math.abs(daysUntilDue) : 0;
   let visitStatus;
-  if (client.isPaused) visitStatus = "paused";
-  else if (client.confirmationStatus === "pending") visitStatus = "pending-confirmation";
-  else if (!lastVisit) visitStatus = "no-date";
-  else if (!nextVisit) visitStatus = "one-off";
-  else if (daysUntilDue < 0) visitStatus = "overdue";
-  else if (daysUntilDue === 0) visitStatus = "due-today";
-  else if (daysUntilDue <= 7) visitStatus = "due-soon";
-  else visitStatus = "not-due";
-
-  return { ...client, nextVisit, daysSinceVisit, daysUntilDue, overdueDays, visitStatus };
+  if(c.isPaused) visitStatus="paused";
+  else if(c.confirmationStatus==="pending") visitStatus="pending-confirmation";
+  else if(!c.lastVisit) visitStatus="no-date";
+  else if(!nextVisit) visitStatus="one-off";
+  else if(daysUntilDue<0) visitStatus="overdue";
+  else if(daysUntilDue===0) visitStatus="due-today";
+  else if(daysUntilDue<=7) visitStatus="due-soon";
+  else visitStatus="not-due";
+  return {...c, nextVisit, daysSinceVisit, daysUntilDue, overdueDays, visitStatus};
 };
 
 const URGENCY = ["overdue","due-today","due-soon","pending-confirmation","not-due","no-date","one-off","paused"];
-const sortByUrgency = (list) => [...list].sort((a,b) => {
-  const ai = URGENCY.indexOf(a.visitStatus), bi = URGENCY.indexOf(b.visitStatus);
-  if (ai !== bi) return ai - bi;
-  if (a.visitStatus === "overdue") return b.overdueDays - a.overdueDays;
-  if (a.visitStatus === "due-soon") return (a.daysUntilDue||0) - (b.daysUntilDue||0);
-  return 0;
-});
+const sortByUrgency = (list) => [...list].sort((a,b) => { const ai=URGENCY.indexOf(a.visitStatus),bi=URGENCY.indexOf(b.visitStatus); if(ai!==bi) return ai-bi; if(a.visitStatus==="overdue") return b.overdueDays-a.overdueDays; return 0; });
 
 const STATUS_CFG = {
-  "overdue":              { color:RED,      bg:"#fee2e2",  icon:"🔴", label:"Overdue" },
-  "due-today":            { color:ORANGE,   bg:"#fff7ed",  icon:"🟠", label:"Due Today" },
-  "due-soon":             { color:AMBER,    bg:"#fffbeb",  icon:"🟡", label:"Due Soon" },
-  "not-due":              { color:G,        bg:"#f0fdf4",  icon:"🟢", label:"Not Due Yet" },
-  "pending-confirmation": { color:"#6366f1",bg:"#eef2ff",  icon:"⏳", label:"Needs Confirmation" },
-  "paused":               { color:"#94a3b8",bg:"#f8fafc",  icon:"⏸", label:"Paused" },
-  "no-date":              { color:"#94a3b8",bg:"#f8fafc",  icon:"📅", label:"No Date Set" },
-  "one-off":              { color:BLUE,     bg:"#eff6ff",  icon:"1️⃣", label:"One-off" },
+  "overdue":              {color:RED,     bg:"#fee2e2",icon:"🔴",label:"Overdue"},
+  "due-today":            {color:ORANGE,  bg:"#fff7ed",icon:"🟠",label:"Due Today"},
+  "due-soon":             {color:AMBER,   bg:"#fffbeb",icon:"🟡",label:"Due Soon"},
+  "not-due":              {color:G,       bg:"#f0fdf4",icon:"🟢",label:"Not Due Yet"},
+  "pending-confirmation": {color:"#6366f1",bg:"#eef2ff",icon:"⏳",label:"Needs Confirmation"},
+  "paused":               {color:"#94a3b8",bg:"#f8fafc",icon:"⏸",label:"Paused"},
+  "no-date":              {color:"#94a3b8",bg:"#f8fafc",icon:"📅",label:"No Date Set"},
+  "one-off":              {color:BLUE,    bg:"#eff6ff",icon:"1️⃣",label:"One-off"},
 };
 
 const PAY_CFG = {
-  unpaid:     { color:RED,      bg:"#fee2e2", label:"Unpaid" },
-  paid:       { color:"#16a34a",bg:"#dcfce7", label:"Paid" },
-  "part-paid":{ color:AMBER,    bg:"#fef9c3", label:"Part Paid" },
-  waived:     { color:"#94a3b8",bg:"#f1f5f9", label:"Waived" },
+  unpaid:      {color:RED,      bg:"#fee2e2",label:"Unpaid"},
+  paid:        {color:"#16a34a",bg:"#dcfce7",label:"Paid"},
+  "part-paid": {color:AMBER,    bg:"#fef9c3",label:"Part Paid"},
+  waived:      {color:"#94a3b8",bg:"#f1f5f9",label:"Waived"},
 };
 
-const DEFAULT_CLIENTS = [
-  { id:"CCG001", source:"CCG", name:"Louise Bridget", address:"Balerno Rugby Club", phone:"", area:"Balerno", jobType:"Grounds Maintenance", price:50, frequency:"Monthly", lastVisit:"2026-05-01", confirmationStatus:"confirmed", isPaused:false, notes:"", accessNotes:"", duration:120, chrisCut:true, active:true, visitHistory:["2026-05-01"], tags:[] },
-  { id:"CCG002", source:"CCG", name:"Daniel Sloss", address:"", phone:"", area:"", jobType:"Garden Maintenance", price:null, frequency:"Every 2 Weeks", lastVisit:"", confirmationStatus:"confirmed", isPaused:false, notes:"Price TBC", duration:60, chrisCut:true, active:true, visitHistory:[], tags:[] },
-  { id:"CCG003", source:"CCG", name:"Bravelaw Estate", address:"", phone:"+1 (713) 256-3101", area:"Edinburgh", jobType:"Grounds Maintenance", price:300, frequency:"Monthly", lastVisit:"", confirmationStatus:"confirmed", isPaused:false, notes:"", duration:480, chrisCut:true, active:true, visitHistory:[], tags:[] },
-  { id:"CCG004", source:"CCG", name:"Chris Mum", address:"", phone:"", area:"", jobType:"Garden Maintenance", price:20, frequency:"Every 2 Weeks", lastVisit:"", confirmationStatus:"confirmed", isPaused:false, notes:"", duration:60, chrisCut:true, active:true, visitHistory:[], tags:[] },
-  { id:"CCG005", source:"CCG", name:"Chris", address:"", phone:"", area:"", jobType:"Garden Maintenance", price:30, frequency:"Every 2 Weeks", lastVisit:"", confirmationStatus:"confirmed", isPaused:false, notes:"", duration:60, chrisCut:true, active:true, visitHistory:[], tags:[] },
-  { id:"CCG006", source:"CCG", name:"Forrester Flats", address:"", phone:"", area:"Forrester", jobType:"Grounds Maintenance", price:null, frequency:"Monthly", lastVisit:"", confirmationStatus:"confirmed", isPaused:false, notes:"Price TBC", duration:180, chrisCut:true, active:true, visitHistory:[], tags:[] },
-  { id:"CCG007", source:"CCG", name:"Chris Granny", address:"", phone:"", area:"", jobType:"Garden Maintenance", price:40, frequency:"Every 2 Weeks", lastVisit:"", confirmationStatus:"confirmed", isPaused:false, notes:"", duration:90, chrisCut:true, active:true, visitHistory:[], tags:[] },
-  { id:"CCG008", source:"CCG", name:"Parkhead", address:"", phone:"", area:"Parkhead", jobType:"Grounds Maintenance", price:40, frequency:"Monthly", lastVisit:"", confirmationStatus:"confirmed", isPaused:false, notes:"", duration:120, chrisCut:true, active:true, visitHistory:[], tags:[] },
-  { id:"CCG009", source:"CCG", name:"Jane", address:"13 Langton View, East Calder, EH53 0LE", phone:"", area:"East Calder", jobType:"Garden Maintenance", price:30, frequency:"Every 2 Weeks", lastVisit:"", confirmationStatus:"confirmed", isPaused:false, notes:"", duration:90, chrisCut:true, active:true, visitHistory:[], tags:[] },
-  { id:"CCG010", source:"CCG", name:"Margret", address:"", phone:"", area:"", jobType:"Garden Maintenance", price:null, frequency:"Every 2 Weeks", lastVisit:"", confirmationStatus:"confirmed", isPaused:false, notes:"", duration:60, chrisCut:true, active:true, visitHistory:[], tags:[] },
-  { id:"CCG011", source:"CCG", name:"Illi", address:"", phone:"", area:"", jobType:"Garden Maintenance", price:null, frequency:"Every 2 Weeks", lastVisit:"", confirmationStatus:"confirmed", isPaused:false, notes:"", duration:60, chrisCut:true, active:true, visitHistory:[], tags:[] },
-  { id:"CCG012", source:"CCG", name:"Palm", address:"", phone:"", area:"", jobType:"Garden Maintenance", price:null, frequency:"Every 2 Weeks", lastVisit:"", confirmationStatus:"confirmed", isPaused:false, notes:"", duration:60, chrisCut:true, active:true, visitHistory:[], tags:[] },
-  { id:"CCG013", source:"CCG", name:"Marrion", address:"", phone:"", area:"", jobType:"Garden Maintenance", price:null, frequency:"Every 2 Weeks", lastVisit:"", confirmationStatus:"confirmed", isPaused:false, notes:"", duration:60, chrisCut:true, active:true, visitHistory:[], tags:[] },
-  { id:"CCG014", source:"CCG", name:"Scout Hall Woman", address:"", phone:"", area:"", jobType:"Garden Maintenance", price:null, frequency:"Every 2 Weeks", lastVisit:"", confirmationStatus:"confirmed", isPaused:false, notes:"", duration:60, chrisCut:true, active:true, visitHistory:[], tags:[] },
-  { id:"CCG015", source:"CCG", name:"Fourth View Road Granny", address:"10 Fourth View Road", phone:"", area:"", jobType:"Garden Maintenance", price:null, frequency:"Every 2 Weeks", lastVisit:"", confirmationStatus:"confirmed", isPaused:false, notes:"", duration:60, chrisCut:true, active:true, visitHistory:[], tags:[] },
-  { id:"CCG016", source:"CCG", name:"Langwill Place Client", address:"5 Langwill Place, Currie, EH14 5NL", phone:"", area:"Currie", jobType:"Paving & Groundworks", price:null, frequency:"One-off", lastVisit:"", confirmationStatus:"pending", isPaused:false, notes:"Grout and power wash", duration:180, chrisCut:true, active:true, visitHistory:[], tags:[] },
-  { id:"CCG017", source:"CCG", name:"Marchbank Drive Client", address:"57 Marchbank Drive, Balerno, EH14 7ER", phone:"", area:"Balerno", jobType:"Garden Maintenance", price:null, frequency:"Every 2 Weeks", lastVisit:"", confirmationStatus:"pending", isPaused:false, notes:"", duration:90, chrisCut:true, active:true, visitHistory:[], tags:[] },
-  { id:"CCG018", source:"CCG", name:"Johnsburn Road Client", address:"19 Johnsburn Road, Balerno, EH14 7DY", phone:"", area:"Balerno", jobType:"Garden Maintenance", price:null, frequency:"Every 2 Weeks", lastVisit:"", confirmationStatus:"pending", isPaused:false, notes:"", duration:90, chrisCut:true, active:true, visitHistory:[], tags:[] },
-  { id:"CCG019", source:"CCG", name:"Riccarton Drive Client", address:"5 Riccarton Drive, Currie, EH14 5PN", phone:"", area:"Currie", jobType:"Garden Maintenance", price:null, frequency:"Every 2 Weeks", lastVisit:"", confirmationStatus:"pending", isPaused:false, notes:"", duration:90, chrisCut:true, active:true, visitHistory:[], tags:[] },
-  { id:"MG001", source:"MG", name:"Russell Cairns", address:"20 Colinton Mains Grove, Edinburgh, EH13 9DQ", phone:"+44 7766 040233", area:"Colinton", jobType:"Garden Maintenance", price:null, frequency:"Every 2 Weeks", lastVisit:"2026-04-28", confirmationStatus:"confirmed", isPaused:false, notes:"", duration:90, chrisCut:false, active:true, visitHistory:["2026-04-28"], tags:[] },
-  { id:"MG002", source:"MG", name:"Clare", address:"45 Willow Grove, Craigshill, Livingston, EH54 5NA", phone:"+44 7364 200875", area:"Livingston", jobType:"Garden Maintenance", price:null, frequency:"Every 2 Weeks", lastVisit:"2026-05-01", confirmationStatus:"confirmed", isPaused:false, notes:"", duration:90, chrisCut:false, active:true, visitHistory:["2026-05-01"], tags:[] },
-  { id:"MG003", source:"MG", name:"Scott Murray", address:"4 Shiel Path, East Calder, EH53 0FS", phone:"", area:"East Calder", jobType:"Garden Maintenance", price:null, frequency:"Every 2 Weeks", lastVisit:"2026-05-05", confirmationStatus:"pending", isPaused:false, notes:"", duration:90, chrisCut:false, active:true, visitHistory:["2026-05-05"], tags:[] },
-  { id:"MG004", source:"MG", name:"Krishna Arekapudi", address:"83 Brodie Place, EH53 0TY", phone:"+44 7714 196963", area:"Livingston", jobType:"Garden Maintenance", price:null, frequency:"Every 2 Weeks", lastVisit:"2026-05-04", confirmationStatus:"pending", isPaused:false, notes:"", duration:60, chrisCut:false, active:true, visitHistory:["2026-05-04"], tags:[] },
-  { id:"MG005", source:"MG", name:"Mikey G", address:"311 Broomhouse Road, Edinburgh, EH11 3UP", phone:"+44 7398 237243", area:"Broomhouse", jobType:"Garden Maintenance", price:null, frequency:"Every 2 Weeks", lastVisit:"2026-05-08", confirmationStatus:"confirmed", isPaused:false, notes:"", duration:60, chrisCut:false, active:true, visitHistory:["2026-05-08"], tags:[] },
-  { id:"MG006", source:"MG", name:"Sally McGregor", address:"43 Bonaly Crescent, Colinton, EH13 0EP", phone:"+44 7561 801380", area:"Colinton", jobType:"Garden Maintenance", price:null, frequency:"Every 2 Weeks", lastVisit:"2026-05-11", confirmationStatus:"confirmed", isPaused:false, notes:"", duration:120, chrisCut:false, active:true, visitHistory:["2026-05-11"], tags:[] },
-  { id:"MG007", source:"MG", name:"Saravanan", address:"Lilybank Road, Ratho Station, EH28", phone:"+91 95919 98168", area:"Ratho Station", jobType:"Garden Maintenance", price:null, frequency:"Every 2 Weeks", lastVisit:"2026-05-06", confirmationStatus:"pending", isPaused:false, notes:"", duration:90, chrisCut:false, active:true, visitHistory:["2026-05-06"], tags:[] },
-  { id:"MG008", source:"MG", name:"Kirsty Campbell", address:"3 Lilybank Lane, Ratho Station, EH28 8AW", phone:"", area:"Ratho Station", jobType:"Garden Maintenance", price:null, frequency:"Every 2 Weeks", lastVisit:"2026-05-15", confirmationStatus:"pending", isPaused:false, notes:"", duration:60, chrisCut:false, active:true, visitHistory:["2026-05-15"], tags:[] },
-  { id:"MG009", source:"MG", name:"poorimitlaprakash", address:"20 Lilybank Road, Ratho Station, EH28", phone:"+44 7448 950184", area:"Ratho Station", jobType:"Garden Maintenance", price:null, frequency:"Every 2 Weeks", lastVisit:"2026-05-15", confirmationStatus:"pending", isPaused:false, notes:"", duration:60, chrisCut:false, active:true, visitHistory:["2026-05-15"], tags:[] },
-];
-
-const loadClients = () => { try { const s=localStorage.getItem(CLIENTS_KEY); if(s) return JSON.parse(s); } catch(e){} return DEFAULT_CLIENTS; };
-const loadVisits = () => { try { const s=localStorage.getItem(VISITS_KEY); if(s) return JSON.parse(s); } catch(e){} return []; };
-const saveClients = (c) => { try { localStorage.setItem(CLIENTS_KEY,JSON.stringify(c)); } catch(e){} };
-const saveVisits = (v) => { try { localStorage.setItem(VISITS_KEY,JSON.stringify(v)); } catch(e){} };
-
 const st = {
-  app: { fontFamily:"-apple-system,BlinkMacSystemFont,system-ui,sans-serif", background:"#f8fafc", minHeight:"100vh", paddingBottom:84 },
-  topbar: { background:"#fff", borderBottom:"1px solid #e8ecf0", padding:"12px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, zIndex:100 },
-  content: { padding:"16px", maxWidth:600, margin:"0 auto" },
-  bottomnav: { position:"fixed", bottom:0, left:0, right:0, background:"rgba(255,255,255,0.97)", borderTop:"1px solid #e8ecf0", display:"flex", justifyContent:"space-around", padding:"8px 0 20px", zIndex:100 },
-  navbtn: { background:"none", border:"none", display:"flex", flexDirection:"column", alignItems:"center", gap:2, fontSize:10, fontWeight:600, cursor:"pointer", padding:"4px 16px" },
-  card: { background:"#fff", borderRadius:16, border:"1px solid #e8ecf0", padding:"16px", marginBottom:10 },
-  badge: (color,bg) => ({ display:"inline-flex", alignItems:"center", gap:3, background:bg, color:color, borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:700 }),
-  btn: (bg,color,full) => ({ background:bg, color:color, border:"none", borderRadius:12, padding:"11px 18px", fontWeight:600, fontSize:14, cursor:"pointer", display:"inline-flex", alignItems:"center", justifyContent:"center", gap:6, width:full?"100%":"auto" }),
-  btnSm: (bg,color) => ({ background:bg, color:color, border:"none", borderRadius:9, padding:"7px 13px", fontWeight:600, fontSize:12, cursor:"pointer", display:"inline-flex", alignItems:"center", gap:4 }),
-  input: { background:"#f4f6f8", border:"1.5px solid transparent", borderRadius:11, padding:"11px 13px", fontSize:15, width:"100%", outline:"none", boxSizing:"border-box", fontFamily:"inherit" },
-  label: { fontSize:12, fontWeight:700, color:"#64748b", display:"block", marginBottom:5, textTransform:"uppercase", letterSpacing:0.4 },
-  row: { display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 0", borderBottom:"1px solid #f1f5f9" },
-  secTitle: { fontSize:12, fontWeight:800, color:"#94a3b8", textTransform:"uppercase", letterSpacing:0.8, marginBottom:12 },
+  app:       {fontFamily:"-apple-system,BlinkMacSystemFont,system-ui,sans-serif",background:"#f8fafc",minHeight:"100vh",paddingBottom:84},
+  topbar:    {background:"#fff",borderBottom:"1px solid #e8ecf0",padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100},
+  content:   {padding:"16px",maxWidth:600,margin:"0 auto"},
+  bottomnav: {position:"fixed",bottom:0,left:0,right:0,background:"rgba(255,255,255,0.97)",borderTop:"1px solid #e8ecf0",display:"flex",justifyContent:"space-around",padding:"8px 0 20px",zIndex:100},
+  navbtn:    {background:"none",border:"none",display:"flex",flexDirection:"column",alignItems:"center",gap:2,fontSize:10,fontWeight:600,cursor:"pointer",padding:"4px 16px"},
+  card:      {background:"#fff",borderRadius:16,border:"1px solid #e8ecf0",padding:"16px",marginBottom:10},
+  badge:     (color,bg)=>({display:"inline-flex",alignItems:"center",gap:3,background:bg,color:color,borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}),
+  btn:       (bg,color,full)=>({background:bg,color:color,border:"none",borderRadius:12,padding:"11px 18px",fontWeight:600,fontSize:14,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:6,width:full?"100%":"auto"}),
+  btnSm:     (bg,color)=>({background:bg,color:color,border:"none",borderRadius:9,padding:"7px 13px",fontWeight:600,fontSize:12,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:4}),
+  input:     {background:"#f4f6f8",border:"1.5px solid transparent",borderRadius:11,padding:"11px 13px",fontSize:15,width:"100%",outline:"none",boxSizing:"border-box",fontFamily:"inherit"},
+  label:     {fontSize:12,fontWeight:700,color:"#64748b",display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:0.4},
+  row:       {display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid #f1f5f9"},
+  secTitle:  {fontSize:12,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:0.8,marginBottom:12},
 };
 
 const StatusBadge = ({status}) => { const c=STATUS_CFG[status]||STATUS_CFG["no-date"]; return <span style={st.badge(c.color,c.bg)}>{c.icon} {c.label}</span>; };
@@ -157,11 +127,7 @@ const PayBadge = ({status}) => { const c=PAY_CFG[status]||PAY_CFG.unpaid; return
 
 const LockScreen = ({onUnlock}) => {
   const [pin,setPin]=useState(""); const [error,setError]=useState(false); const [shake,setShake]=useState(false);
-  const handleKey=(k)=>{
-    if(k==="del"){setPin(p=>p.slice(0,-1));setError(false);return;}
-    const next=pin+k; setPin(next);
-    if(next.length===4){ if(next===PIN){onUnlock();} else{setError(true);setShake(true);setTimeout(()=>{setPin("");setError(false);setShake(false);},700);} }
-  };
+  const handleKey=(k)=>{ if(k==="del"){setPin(p=>p.slice(0,-1));setError(false);return;} const next=pin+k;setPin(next); if(next.length===4){if(next===PIN){onUnlock();}else{setError(true);setShake(true);setTimeout(()=>{setPin("");setError(false);setShake(false);},700);}} };
   return (
     <div style={{minHeight:"100vh",background:"#0a1a0f",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:32}}>
       <div style={{fontSize:48,marginBottom:8}}>🌿</div>
@@ -180,6 +146,37 @@ const LockScreen = ({onUnlock}) => {
     </div>
   );
 };
+
+const DEFAULT_CLIENTS = [
+  {id:"CCG001",source:"CCG",name:"Louise Bridget",address:"Balerno Rugby Club",phone:"",area:"Balerno",jobType:"Grounds Maintenance",price:50,frequency:"Monthly",lastVisit:"2026-05-01",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:120,chrisCut:true,active:true,visitHistory:["2026-05-01"],tags:[]},
+  {id:"CCG002",source:"CCG",name:"Daniel Sloss",address:"",phone:"",area:"",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"Price TBC",accessNotes:"",duration:60,chrisCut:true,active:true,visitHistory:[],tags:[]},
+  {id:"CCG003",source:"CCG",name:"Bravelaw Estate",address:"",phone:"+1 (713) 256-3101",area:"Edinburgh",jobType:"Grounds Maintenance",price:300,frequency:"Monthly",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:480,chrisCut:true,active:true,visitHistory:[],tags:[]},
+  {id:"CCG004",source:"CCG",name:"Chris Mum",address:"",phone:"",area:"",jobType:"Garden Maintenance",price:20,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:true,active:true,visitHistory:[],tags:[]},
+  {id:"CCG005",source:"CCG",name:"Chris",address:"",phone:"",area:"",jobType:"Garden Maintenance",price:30,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:true,active:true,visitHistory:[],tags:[]},
+  {id:"CCG006",source:"CCG",name:"Forrester Flats",address:"",phone:"",area:"Forrester",jobType:"Grounds Maintenance",price:null,frequency:"Monthly",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"Price TBC",accessNotes:"",duration:180,chrisCut:true,active:true,visitHistory:[],tags:[]},
+  {id:"CCG007",source:"CCG",name:"Chris Granny",address:"",phone:"",area:"",jobType:"Garden Maintenance",price:40,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:90,chrisCut:true,active:true,visitHistory:[],tags:[]},
+  {id:"CCG008",source:"CCG",name:"Parkhead",address:"",phone:"",area:"Parkhead",jobType:"Grounds Maintenance",price:40,frequency:"Monthly",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:120,chrisCut:true,active:true,visitHistory:[],tags:[]},
+  {id:"CCG009",source:"CCG",name:"Jane",address:"13 Langton View, East Calder, EH53 0LE",phone:"",area:"East Calder",jobType:"Garden Maintenance",price:30,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:90,chrisCut:true,active:true,visitHistory:[],tags:[]},
+  {id:"CCG010",source:"CCG",name:"Margret",address:"",phone:"",area:"",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:true,active:true,visitHistory:[],tags:[]},
+  {id:"CCG011",source:"CCG",name:"Illi",address:"",phone:"",area:"",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:true,active:true,visitHistory:[],tags:[]},
+  {id:"CCG012",source:"CCG",name:"Palm",address:"",phone:"",area:"",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:true,active:true,visitHistory:[],tags:[]},
+  {id:"CCG013",source:"CCG",name:"Marrion",address:"",phone:"",area:"",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:true,active:true,visitHistory:[],tags:[]},
+  {id:"CCG014",source:"CCG",name:"Scout Hall Woman",address:"",phone:"",area:"",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:true,active:true,visitHistory:[],tags:[]},
+  {id:"CCG015",source:"CCG",name:"Fourth View Road Granny",address:"10 Fourth View Road",phone:"",area:"",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:true,active:true,visitHistory:[],tags:[]},
+  {id:"CCG016",source:"CCG",name:"Langwill Place Client",address:"5 Langwill Place, Currie, EH14 5NL",phone:"",area:"Currie",jobType:"Paving & Groundworks",price:null,frequency:"One-off",lastVisit:"",confirmationStatus:"pending",isPaused:false,notes:"Grout and power wash",accessNotes:"",duration:180,chrisCut:true,active:true,visitHistory:[],tags:[]},
+  {id:"CCG017",source:"CCG",name:"Marchbank Drive Client",address:"57 Marchbank Drive, Balerno, EH14 7ER",phone:"",area:"Balerno",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"pending",isPaused:false,notes:"",accessNotes:"",duration:90,chrisCut:true,active:true,visitHistory:[],tags:[]},
+  {id:"CCG018",source:"CCG",name:"Johnsburn Road Client",address:"19 Johnsburn Road, Balerno, EH14 7DY",phone:"",area:"Balerno",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"pending",isPaused:false,notes:"",accessNotes:"",duration:90,chrisCut:true,active:true,visitHistory:[],tags:[]},
+  {id:"CCG019",source:"CCG",name:"Riccarton Drive Client",address:"5 Riccarton Drive, Currie, EH14 5PN",phone:"",area:"Currie",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"pending",isPaused:false,notes:"",accessNotes:"",duration:90,chrisCut:true,active:true,visitHistory:[],tags:[]},
+  {id:"MG001",source:"MG",name:"Russell Cairns",address:"20 Colinton Mains Grove, Edinburgh, EH13 9DQ",phone:"+44 7766 040233",area:"Colinton",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"2026-04-28",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:90,chrisCut:false,active:true,visitHistory:["2026-04-28"],tags:[]},
+  {id:"MG002",source:"MG",name:"Clare",address:"45 Willow Grove, Craigshill, Livingston, EH54 5NA",phone:"+44 7364 200875",area:"Livingston",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"2026-05-01",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:90,chrisCut:false,active:true,visitHistory:["2026-05-01"],tags:[]},
+  {id:"MG003",source:"MG",name:"Scott Murray",address:"4 Shiel Path, East Calder, EH53 0FS",phone:"",area:"East Calder",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"2026-05-05",confirmationStatus:"pending",isPaused:false,notes:"",accessNotes:"",duration:90,chrisCut:false,active:true,visitHistory:["2026-05-05"],tags:[]},
+  {id:"MG004",source:"MG",name:"Krishna Arekapudi",address:"83 Brodie Place, EH53 0TY",phone:"+44 7714 196963",area:"Livingston",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"2026-05-04",confirmationStatus:"pending",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:false,active:true,visitHistory:["2026-05-04"],tags:[]},
+  {id:"MG005",source:"MG",name:"Mikey G",address:"311 Broomhouse Road, Edinburgh, EH11 3UP",phone:"+44 7398 237243",area:"Broomhouse",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"2026-05-08",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:false,active:true,visitHistory:["2026-05-08"],tags:[]},
+  {id:"MG006",source:"MG",name:"Sally McGregor",address:"43 Bonaly Crescent, Colinton, EH13 0EP",phone:"+44 7561 801380",area:"Colinton",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"2026-05-11",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:120,chrisCut:false,active:true,visitHistory:["2026-05-11"],tags:[]},
+  {id:"MG007",source:"MG",name:"Saravanan",address:"Lilybank Road, Ratho Station, EH28",phone:"+91 95919 98168",area:"Ratho Station",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"2026-05-06",confirmationStatus:"pending",isPaused:false,notes:"",accessNotes:"",duration:90,chrisCut:false,active:true,visitHistory:["2026-05-06"],tags:[]},
+  {id:"MG008",source:"MG",name:"Kirsty Campbell",address:"3 Lilybank Lane, Ratho Station, EH28 8AW",phone:"",area:"Ratho Station",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"2026-05-15",confirmationStatus:"pending",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:false,active:true,visitHistory:["2026-05-15"],tags:[]},
+  {id:"MG009",source:"MG",name:"poorimitlaprakash",address:"20 Lilybank Road, Ratho Station, EH28",phone:"+44 7448 950184",area:"Ratho Station",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"2026-05-15",confirmationStatus:"pending",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:false,active:true,visitHistory:["2026-05-15"],tags:[]},
+];
 const blankClient = (count) => ({
   id:`MG${String(count+1).padStart(3,"0")}`, source:"MG", name:"", address:"", phone:"", area:"",
   jobType:"Garden Maintenance", price:"", frequency:DEFAULT_FREQ, lastVisit:"",
@@ -189,8 +186,9 @@ const blankClient = (count) => ({
 
 export default function App() {
   const [unlocked,setUnlocked]=useState(false);
-  const [rawClients,setRawClients]=useState(loadClients);
-  const [visits,setVisits]=useState(loadVisits);
+  const [rawClients,setRawClients]=useState([]);
+  const [visits,setVisits]=useState([]);
+  const [loading,setLoading]=useState(true);
   const [page,setPage]=useState("dashboard");
   const [search,setSearch]=useState("");
   const [filterStatus,setFilterStatus]=useState("all");
@@ -207,8 +205,6 @@ export default function App() {
   const [payModal,setPayModal]=useState(null);
 
   const clients=useMemo(()=>rawClients.filter(c=>c.active!==false).map(calcSchedule),[rawClients]);
-  const persistClients=(c)=>{setRawClients(c);saveClients(c);};
-  const persistVisits=(v)=>{setVisits(v);saveVisits(v);};
   const showToast=(msg,type="success")=>{setToast({msg,type});setTimeout(()=>setToast(null),2500);};
 
   const overdue=clients.filter(c=>c.visitStatus==="overdue");
@@ -216,7 +212,6 @@ export default function App() {
   const dueSoon=clients.filter(c=>c.visitStatus==="due-soon");
   const needsConfirm=clients.filter(c=>c.visitStatus==="pending-confirmation");
   const areas=[...new Set(clients.map(c=>c.area).filter(Boolean))].sort();
-
   const weekStart=thisWeekStart();
   const monthStart=thisMonthStart();
   const unpaidVisits=visits.filter(v=>v.paymentStatus==="unpaid");
@@ -228,52 +223,99 @@ export default function App() {
   const totalPaidWeek=weekPaid.reduce((s,v)=>s+(v.price||0),0);
   const totalPaidMonth=monthPaid.reduce((s,v)=>s+(v.price||0),0);
 
-  const markVisited=(id)=>{
+  // ── LOAD FROM SUPABASE ──
+  useEffect(()=>{
+    if(!unlocked) return;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const [dbClients, dbVisits] = await Promise.all([db.getClients(), db.getVisits()]);
+        if(dbClients && dbClients.length > 0) {
+          setRawClients(dbClients.map(fromDb));
+        } else {
+          // First time — seed with default clients
+          for(const c of DEFAULT_CLIENTS) { await db.saveClient(c); }
+          setRawClients(DEFAULT_CLIENTS);
+        }
+        if(dbVisits && dbVisits.length > 0) {
+          setVisits(dbVisits.map(visitFromDb));
+        }
+      } catch(e) {
+        showToast("Connection error — working offline","error");
+        setRawClients(DEFAULT_CLIENTS);
+      }
+      setLoading(false);
+    };
+    load();
+  },[unlocked]);
+
+  // ── ACTIONS ──
+  const updateClient = async (updated) => {
+    const list = rawClients.map(c=>c.id===updated.id?updated:c);
+    setRawClients(list);
+    await db.saveClient(updated);
+  };
+
+  const markVisited = async (id) => {
     const client=clients.find(c=>c.id===id);
     if(!client) return;
-    const newVisit={
-      id:makeVisitId(),clientId:id,clientName:client.name,
-      visitDate:TODAY,price:client.price||null,
-      paymentStatus:"unpaid",paymentMethod:null,
-      paymentDate:null,notes:"",createdAt:TODAY,
-    };
-    persistVisits([...visits,newVisit]);
-    persistClients(rawClients.map(c=>{
-      if(c.id!==id) return c;
-      return {...c,lastVisit:TODAY,confirmationStatus:"confirmed",isPaused:false,visitHistory:[...(c.visitHistory||[]),TODAY]};
-    }));
+    const newVisit={id:makeId(),clientId:id,clientName:client.name,visitDate:TODAY,price:client.price||null,paymentStatus:"unpaid",paymentMethod:null,paymentDate:null,notes:""};
+    const updatedClient={...client,lastVisit:TODAY,confirmationStatus:"confirmed",isPaused:false,visitHistory:[...(client.visitHistory||[]),TODAY]};
+    setVisits(prev=>[...prev,newVisit]);
+    await db.saveVisit(newVisit);
+    await updateClient(updatedClient);
     setSelected(null);
     showToast("✅ Visit recorded — payment pending");
   };
 
   const openPayModal=(visit)=>setPayModal({...visit,_method:"Cash"});
 
-  const confirmPayment=()=>{
+  const confirmPayment = async () => {
     if(!payModal) return;
-    persistVisits(visits.map(v=>v.id===payModal.id?{...v,paymentStatus:"paid",paymentMethod:payModal._method,paymentDate:TODAY}:v));
+    const updates={payment_status:"paid",payment_method:payModal._method,payment_date:TODAY};
+    setVisits(prev=>prev.map(v=>v.id===payModal.id?{...v,paymentStatus:"paid",paymentMethod:payModal._method,paymentDate:TODAY}:v));
+    await db.updateVisit(payModal.id,updates);
     setPayModal(null);
     showToast("💷 Payment confirmed!");
   };
 
-  const confirmClient=(id)=>{persistClients(rawClients.map(c=>c.id===id?{...c,confirmationStatus:"confirmed"}:c));showToast("✅ Confirmed!");};
-  const pauseClient=(id)=>{persistClients(rawClients.map(c=>c.id===id?{...c,isPaused:true}:c));setSelected(null);showToast("⏸ Paused");};
-  const archiveClient=(id)=>{persistClients(rawClients.map(c=>c.id===id?{...c,active:false}:c));setSelected(null);showToast("Archived");};
-  const deleteClient=(id)=>{persistClients(rawClients.filter(c=>c.id!==id));setSelected(null);setConfirmDelete(null);showToast("Removed");};
+  const confirmClient = async (id) => { await updateClient({...rawClients.find(c=>c.id===id),confirmationStatus:"confirmed"}); showToast("✅ Confirmed!"); };
+  const pauseClient = async (id) => { await updateClient({...rawClients.find(c=>c.id===id),isPaused:true}); setSelected(null); showToast("⏸ Paused"); };
+  const archiveClient = async (id) => { await updateClient({...rawClients.find(c=>c.id===id),active:false}); setSelected(null); showToast("Archived"); };
 
-  const saveEdit=(updated)=>{
-    persistClients(rawClients.map(c=>c.id===updated.id?{...updated,price:updated.price?parseFloat(updated.price):null}:c));
+  const deleteClient = async (id) => {
+    setRawClients(prev=>prev.filter(c=>c.id!==id));
+    await db.deleteClient(id);
+    setSelected(null); setConfirmDelete(null);
+    showToast("Removed");
+  };
+
+  const saveEdit = async (updated) => {
+    const toSave={...updated,price:updated.price?parseFloat(updated.price):null};
+    await updateClient(toSave);
     setEditing(null);
-    setSelected(calcSchedule({...updated,price:updated.price?parseFloat(updated.price):null}));
+    setSelected(calcSchedule(toSave));
     showToast("✅ Saved!");
   };
 
-  const saveNewClient=()=>{
+  const saveNewClient = async () => {
     if(!newClient.name.trim()){showToast("Enter a name","error");return;}
-    persistClients([...rawClients,{...newClient,price:newClient.price?parseFloat(newClient.price):null}]);
-    setAddingClient(false);setNewClient(null);showToast("✅ Client added!");
+    const toSave={...newClient,price:newClient.price?parseFloat(newClient.price):null};
+    setRawClients(prev=>[...prev,toSave]);
+    await db.saveClient(toSave);
+    setAddingClient(false); setNewClient(null);
+    showToast("✅ Client added!");
   };
 
   if(!unlocked) return <LockScreen onUnlock={()=>setUnlocked(true)}/>;
+
+  if(loading) return (
+    <div style={{minHeight:"100vh",background:"#f8fafc",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
+      <div style={{fontSize:48}}>🌿</div>
+      <div style={{fontWeight:700,fontSize:16,color:"#1a6b3c"}}>Loading moegardens...</div>
+      <div style={{fontSize:13,color:"#94a3b8"}}>Connecting to database</div>
+    </div>
+  );
 
   const InputField=({label,field,type="text",options,obj,setObj})=>(
     <div style={{marginBottom:14}}>
@@ -340,7 +382,7 @@ export default function App() {
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
           {[
             {label:"🔴 Overdue",val:overdue.length,color:RED,bg:"#fef2f2",fn:()=>{setFilterStatus("overdue");setPage("revisits");}},
-            {label:"🟠 Due Today",val:dueToday.length,color:"#ea580c",bg:"#fff7ed",fn:()=>{setFilterStatus("due-today");setPage("revisits");}},
+            {label:"🟠 Due Today",val:dueToday.length,color:ORANGE,bg:"#fff7ed",fn:()=>{setFilterStatus("due-today");setPage("revisits");}},
             {label:"💷 Unpaid",val:`£${totalUnpaid}`,color:RED,bg:"#fef2f2",fn:()=>setPage("payments")},
             {label:"⏳ Needs Confirm",val:needsConfirm.length,color:"#6366f1",bg:"#eef2ff",fn:()=>{setFilterStatus("pending-confirmation");setPage("revisits");}},
           ].map(({label,val,color,bg,fn})=>(
@@ -365,11 +407,8 @@ export default function App() {
           <div style={{...st.card,borderLeft:`3px solid ${RED}`,marginBottom:12}}>
             <div style={{fontSize:14,fontWeight:800,color:RED,marginBottom:10}}>💷 Unpaid Visits</div>
             {recentUnpaid.map(v=>(
-              <div key={v.id} style={{...st.row,cursor:"pointer"}}>
-                <div>
-                  <div style={{fontWeight:700,fontSize:13}}>{v.clientName}</div>
-                  <div style={{fontSize:11,color:"#94a3b8"}}>Visited: {fmtDate(v.visitDate)}</div>
-                </div>
+              <div key={v.id} style={st.row}>
+                <div><div style={{fontWeight:700,fontSize:13}}>{v.clientName}</div><div style={{fontSize:11,color:"#94a3b8"}}>Visited: {fmtDate(v.visitDate)}</div></div>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <span style={{fontWeight:800,color:RED}}>{fmtPrice(v.price)}</span>
                   <button style={st.btnSm(G,"#fff")} onClick={()=>openPayModal(v)}>Pay</button>
@@ -446,7 +485,7 @@ export default function App() {
         case "name": return [...list].sort((a,b)=>a.name.localeCompare(b.name));
         default: return list;
       }
-    },[]);
+    },[clients,search,filterStatus,filterArea,sortBy]);
     return (
       <div>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
@@ -637,14 +676,12 @@ export default function App() {
       if(payFilter==="this-month") return v.visitDate>=monthStart;
       return true;
     }).sort((a,b)=>b.visitDate.localeCompare(a.visitDate));
-
     const clientsWithUnpaid=[...new Set(unpaidVisits.map(v=>v.clientId))].map(id=>{
       const c=clients.find(x=>x.id===id);
       const owed=unpaidVisits.filter(v=>v.clientId===id).reduce((s,v)=>s+(v.price||0),0);
       const count=unpaidVisits.filter(v=>v.clientId===id).length;
       return {id,name:c?.name||"Unknown",area:c?.area||"",owed,count};
     }).sort((a,b)=>b.owed-a.owed);
-
     return (
       <div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
