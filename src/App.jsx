@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 
 const SUPABASE_URL = "https://jfynkbgjcjlxncmbcfoi.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpmeW5rYmdqY2pseG5jbWJjZm9pIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2MjE1MzEsImV4cCI6MjA5NTE5NzUzMX0.T-IuErjxUCP3j-zYvjjt3tJKV0PBA6CZ6eZMKxJIoeU";
@@ -10,8 +10,9 @@ const db = {
   },
   async saveClient(c) {
     await fetch(`${SUPABASE_URL}/rest/v1/clients`, {
-      method: "POST", headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" },
-      body: JSON.stringify({ id:c.id, source:c.source, name:c.name, address:c.address, phone:c.phone, area:c.area, job_type:c.jobType, price:c.price, frequency:c.frequency, last_visit:c.lastVisit, confirmation_status:c.confirmationStatus, is_paused:c.isPaused, notes:c.notes, access_notes:c.accessNotes, duration:c.duration, chris_cut:c.chrisCut, active:c.active, visit_history:c.visitHistory||[], tags:c.tags||[] })
+      method: "POST",
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" },
+      body: JSON.stringify({ id:c.id, source:c.source, name:c.name, address:c.address, phone:c.phone, area:c.area, job_type:c.jobType, price:c.price, frequency:c.frequency, last_visit:c.lastVisit, confirmation_status:c.confirmationStatus, is_paused:c.isPaused, notes:c.notes, access_notes:c.accessNotes, duration:c.duration, chris_cut:c.chrisCut, active:c.active, visit_history:c.visitHistory||[], tags:c.tags||[], preferred_contact:c.preferredContact||"phone" })
     });
   },
   async deleteClient(id) {
@@ -23,20 +24,35 @@ const db = {
   },
   async saveVisit(v) {
     await fetch(`${SUPABASE_URL}/rest/v1/visits`, {
-      method: "POST", headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" },
+      method: "POST",
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" },
       body: JSON.stringify({ id:v.id, client_id:v.clientId, client_name:v.clientName, visit_date:v.visitDate, price:v.price, payment_status:v.paymentStatus, payment_method:v.paymentMethod, payment_date:v.paymentDate, notes:v.notes||"" })
     });
   },
   async updateVisit(id, updates) {
     await fetch(`${SUPABASE_URL}/rest/v1/visits?id=eq.${id}`, {
-      method: "PATCH", headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" },
+      method: "PATCH",
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify(updates)
     });
   },
 };
 
-const fromDb = (c) => ({ id:c.id, source:c.source, name:c.name, address:c.address||"", phone:c.phone||"", area:c.area||"", jobType:c.job_type||"Garden Maintenance", price:c.price, frequency:c.frequency||"Every 2 Weeks", lastVisit:c.last_visit||"", confirmationStatus:c.confirmation_status||"confirmed", isPaused:c.is_paused||false, notes:c.notes||"", accessNotes:c.access_notes||"", duration:c.duration||60, chrisCut:c.chris_cut||false, active:c.active!==false, visitHistory:c.visit_history||[], tags:c.tags||[] });
-const visitFromDb = (v) => ({ id:v.id, clientId:v.client_id, clientName:v.client_name, visitDate:v.visit_date, price:v.price, paymentStatus:v.payment_status||"unpaid", paymentMethod:v.payment_method, paymentDate:v.payment_date, notes:v.notes||"" });
+const fromDb = (c) => ({
+  id:c.id, source:c.source, name:c.name, address:c.address||"", phone:c.phone||"",
+  area:c.area||"", jobType:c.job_type||"Garden Maintenance", price:c.price,
+  frequency:c.frequency||"Every 2 Weeks", lastVisit:c.last_visit||"",
+  confirmationStatus:c.confirmation_status||"confirmed", isPaused:c.is_paused||false,
+  notes:c.notes||"", accessNotes:c.access_notes||"", duration:c.duration||60,
+  chrisCut:c.chris_cut||false, active:c.active!==false, visitHistory:c.visit_history||[],
+  tags:c.tags||[], preferredContact:c.preferred_contact||"phone",
+});
+
+const visitFromDb = (v) => ({
+  id:v.id, clientId:v.client_id, clientName:v.client_name, visitDate:v.visit_date,
+  price:v.price, paymentStatus:v.payment_status||"unpaid", paymentMethod:v.payment_method,
+  paymentDate:v.payment_date, notes:v.notes||"",
+});
 
 const G = "#1a6b3c";
 const AMBER = "#f59e0b";
@@ -57,14 +73,39 @@ const FREQUENCIES = Object.keys(FREQ_CONFIG);
 const DEFAULT_FREQ = "Every 2 Weeks";
 const JOB_TYPES = ["Garden Maintenance","Grounds Maintenance","Lawn Care","Hedge Trimming","Paving & Groundworks","Tree Work","One-off Clear","Other"];
 const PAYMENT_METHODS = ["Cash","Bank Transfer","Card","Other"];
+const CONTACT_METHODS = [
+  { value:"phone",     label:"📞 Phone Call" },
+  { value:"whatsapp",  label:"💬 WhatsApp" },
+  { value:"messenger", label:"💙 Messenger" },
+  { value:"text",      label:"💬 Text Message" },
+  { value:"email",     label:"📧 Email" },
+  { value:"other",     label:"Other" },
+];
+
 const TODAY = new Date().toISOString().slice(0,10);
 
-const addDays = (dateStr, days) => { if(!dateStr||!days) return ""; const d=new Date(dateStr+"T12:00:00"); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10); };
-const daysBetween = (a,b) => { if(!a||!b) return null; return Math.round((new Date(b+"T12:00:00")-new Date(a+"T12:00:00"))/86400000); };
-const fmtDate = (d) => { if(!d) return "—"; return new Date(d+"T12:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"}); };
+const addDays = (dateStr, days) => {
+  if(!dateStr||!days) return "";
+  const d = new Date(dateStr+"T12:00:00");
+  d.setDate(d.getDate()+days);
+  return d.toISOString().slice(0,10);
+};
+const daysBetween = (a,b) => {
+  if(!a||!b) return null;
+  return Math.round((new Date(b+"T12:00:00")-new Date(a+"T12:00:00"))/86400000);
+};
+const fmtDate = (d) => {
+  if(!d) return "—";
+  return new Date(d+"T12:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});
+};
 const fmtPrice = (p) => p==null?"TBC":`£${p}`;
 const makeId = () => `v_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
-const thisWeekStart = () => { const d=new Date(TODAY+"T12:00:00"); const day=d.getDay(); d.setDate(d.getDate()-(day===0?6:day-1)); return d.toISOString().slice(0,10); };
+const thisWeekStart = () => {
+  const d=new Date(TODAY+"T12:00:00");
+  const day=d.getDay();
+  d.setDate(d.getDate()-(day===0?6:day-1));
+  return d.toISOString().slice(0,10);
+};
 const thisMonthStart = () => TODAY.slice(0,7)+"-01";
 
 const calcSchedule = (c) => {
@@ -86,24 +127,28 @@ const calcSchedule = (c) => {
 };
 
 const URGENCY = ["overdue","due-today","due-soon","pending-confirmation","not-due","no-date","one-off","paused"];
-const sortByUrgency = (list) => [...list].sort((a,b) => { const ai=URGENCY.indexOf(a.visitStatus),bi=URGENCY.indexOf(b.visitStatus); if(ai!==bi) return ai-bi; if(a.visitStatus==="overdue") return b.overdueDays-a.overdueDays; return 0; });
+const sortByUrgency = (list) => [...list].sort((a,b) => {
+  const ai=URGENCY.indexOf(a.visitStatus), bi=URGENCY.indexOf(b.visitStatus);
+  if(ai!==bi) return ai-bi;
+  if(a.visitStatus==="overdue") return b.overdueDays-a.overdueDays;
+  return 0;
+});
 
 const STATUS_CFG = {
-  "overdue":              {color:RED,     bg:"#fee2e2",icon:"🔴",label:"Overdue"},
-  "due-today":            {color:ORANGE,  bg:"#fff7ed",icon:"🟠",label:"Due Today"},
-  "due-soon":             {color:AMBER,   bg:"#fffbeb",icon:"🟡",label:"Due Soon"},
-  "not-due":              {color:G,       bg:"#f0fdf4",icon:"🟢",label:"Not Due Yet"},
+  "overdue":              {color:RED,      bg:"#fee2e2",icon:"🔴",label:"Overdue"},
+  "due-today":            {color:ORANGE,   bg:"#fff7ed",icon:"🟠",label:"Due Today"},
+  "due-soon":             {color:AMBER,    bg:"#fffbeb",icon:"🟡",label:"Due Soon"},
+  "not-due":              {color:G,        bg:"#f0fdf4",icon:"🟢",label:"Not Due Yet"},
   "pending-confirmation": {color:"#6366f1",bg:"#eef2ff",icon:"⏳",label:"Needs Confirmation"},
-  "paused":               {color:"#94a3b8",bg:"#f8fafc",icon:"⏸",label:"Paused"},
+  "paused":               {color:"#94a3b8",bg:"#f8fafc",icon:"⏸", label:"Paused"},
   "no-date":              {color:"#94a3b8",bg:"#f8fafc",icon:"📅",label:"No Date Set"},
-  "one-off":              {color:BLUE,    bg:"#eff6ff",icon:"1️⃣",label:"One-off"},
+  "one-off":              {color:BLUE,     bg:"#eff6ff",icon:"1️⃣",label:"One-off"},
 };
-
 const PAY_CFG = {
-  unpaid:      {color:RED,      bg:"#fee2e2",label:"Unpaid"},
-  paid:        {color:"#16a34a",bg:"#dcfce7",label:"Paid"},
-  "part-paid": {color:AMBER,    bg:"#fef9c3",label:"Part Paid"},
-  waived:      {color:"#94a3b8",bg:"#f1f5f9",label:"Waived"},
+  unpaid:      {color:RED,       bg:"#fee2e2",label:"Unpaid"},
+  paid:        {color:"#16a34a", bg:"#dcfce7",label:"Paid"},
+  "part-paid": {color:AMBER,     bg:"#fef9c3",label:"Part Paid"},
+  waived:      {color:"#94a3b8", bg:"#f1f5f9",label:"Waived"},
 };
 
 const st = {
@@ -122,12 +167,133 @@ const st = {
   secTitle:  {fontSize:12,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:0.8,marginBottom:12},
 };
 
-const StatusBadge = ({status}) => { const c=STATUS_CFG[status]||STATUS_CFG["no-date"]; return <span style={st.badge(c.color,c.bg)}>{c.icon} {c.label}</span>; };
-const PayBadge = ({status}) => { const c=PAY_CFG[status]||PAY_CFG.unpaid; return <span style={st.badge(c.color,c.bg)}>{c.label}</span>; };
+const StatusBadge = ({status}) => {
+  const c = STATUS_CFG[status]||STATUS_CFG["no-date"];
+  return <span style={st.badge(c.color,c.bg)}>{c.icon} {c.label}</span>;
+};
+const PayBadge = ({status}) => {
+  const c = PAY_CFG[status]||PAY_CFG.unpaid;
+  return <span style={st.badge(c.color,c.bg)}>{c.label}</span>;
+};
+
+// ── STABLE INPUT COMPONENTS (defined outside App to prevent remounting) ───────
+const TextInput = ({label, value, onChange, type="text", placeholder}) => (
+  <div style={{marginBottom:14}}>
+    <label style={st.label}>{label}</label>
+    <input
+      type={type}
+      style={st.input}
+      value={value||""}
+      onChange={e=>onChange(e.target.value)}
+      placeholder={placeholder||label}
+    />
+  </div>
+);
+
+const TextArea = ({label, value, onChange, placeholder}) => (
+  <div style={{marginBottom:14}}>
+    <label style={st.label}>{label}</label>
+    <textarea
+      style={{...st.input,resize:"vertical",minHeight:70}}
+      value={value||""}
+      onChange={e=>onChange(e.target.value)}
+      placeholder={placeholder||label}
+    />
+  </div>
+);
+
+const SelectInput = ({label, value, onChange, options}) => (
+  <div style={{marginBottom:14}}>
+    <label style={st.label}>{label}</label>
+    <select style={st.input} value={value||""} onChange={e=>onChange(e.target.value)}>
+      {options.map(o=>typeof o==="string"
+        ? <option key={o} value={o}>{o}</option>
+        : <option key={o.value} value={o.value}>{o.label}</option>
+      )}
+    </select>
+  </div>
+);
+
+const CheckboxInput = ({label, value, onChange}) => (
+  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,cursor:"pointer"}} onClick={()=>onChange(!value)}>
+    <div style={{width:22,height:22,borderRadius:7,border:`2px solid ${value?G:"#cbd5e1"}`,background:value?G:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+      {value&&<span style={{color:"#fff",fontSize:13}}>✓</span>}
+    </div>
+    <span style={{fontSize:14,fontWeight:500}}>{label}</span>
+  </div>
+);
+
+// ── CLIENT FORM (stable component outside App) ────────────────────────────────
+const ClientForm = ({initialData, onSave, onCancel, title}) => {
+  const [form, setForm] = useState(()=>({...initialData, price:initialData.price!=null?String(initialData.price):""}));
+  const set = useCallback((field) => (val) => setForm(prev=>({...prev,[field]:val})), []);
+
+  const handleSave = () => {
+    onSave({...form, price:form.price?parseFloat(form.price):null});
+  };
+
+  return (
+    <div>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
+        <button style={st.btnSm("#f1f5f9","#0f172a")} onClick={onCancel}>← Back</button>
+        <div style={{fontSize:20,fontWeight:800}}>{title}</div>
+      </div>
+
+      <div style={st.card}>
+        <div style={st.secTitle}>Contact</div>
+        <TextInput label="Full Name *" value={form.name} onChange={set("name")}/>
+        <TextInput label="Phone" value={form.phone} onChange={set("phone")} type="tel"/>
+        <TextArea label="Address" value={form.address} onChange={set("address")}/>
+        <TextInput label="Area" value={form.area} onChange={set("area")}/>
+        <TextInput label="Email" value={form.email} onChange={set("email")} type="email"/>
+        <SelectInput label="Preferred Contact Method" value={form.preferredContact} onChange={set("preferredContact")} options={CONTACT_METHODS}/>
+      </div>
+
+      <div style={st.card}>
+        <div style={st.secTitle}>Scheduling</div>
+        <TextInput label="Last Visit Date" value={form.lastVisit} onChange={set("lastVisit")} type="date"/>
+        <SelectInput label="Frequency" value={form.frequency} onChange={set("frequency")} options={FREQUENCIES}/>
+        <div style={{background:"#f0fdf4",borderRadius:10,padding:"10px 12px",fontSize:12,color:G,fontWeight:600,marginBottom:14}}>
+          📅 Next visit auto-calculates from last visit + frequency
+        </div>
+        <SelectInput label="Confirmation Status" value={form.confirmationStatus} onChange={set("confirmationStatus")} options={[{value:"confirmed",label:"Confirmed"},{value:"pending",label:"Pending"}]}/>
+      </div>
+
+      <div style={st.card}>
+        <div style={st.secTitle}>Job & Payment</div>
+        <SelectInput label="Job Type" value={form.jobType} onChange={set("jobType")} options={JOB_TYPES}/>
+        <TextInput label="Price per Visit (£)" value={form.price} onChange={set("price")} type="number"/>
+        <TextInput label="Duration (mins)" value={String(form.duration||"")} onChange={set("duration")} type="number"/>
+        <SelectInput label="Source" value={form.source} onChange={set("source")} options={[{value:"MG",label:"Moegardens"},{value:"CCG",label:"Chris Cavens"}]}/>
+        <SelectInput label="Payment Status" value={form.paymentStatus} onChange={set("paymentStatus")} options={[{value:"unpaid",label:"Unpaid"},{value:"paid",label:"Paid"},{value:"part-paid",label:"Part Paid"}]}/>
+        <CheckboxInput label="Chris 30% cut applies" value={form.chrisCut} onChange={set("chrisCut")}/>
+      </div>
+
+      <div style={st.card}>
+        <div style={st.secTitle}>Notes</div>
+        <TextArea label="General Notes" value={form.notes} onChange={set("notes")}/>
+        <TextArea label="Access Instructions" value={form.accessNotes} onChange={set("accessNotes")}/>
+      </div>
+
+      <button style={{...st.btn(G,"#fff",true),padding:"14px",fontSize:15,borderRadius:14,marginBottom:16}} onClick={handleSave}>
+        Save Client
+      </button>
+    </div>
+  );
+};
 
 const LockScreen = ({onUnlock}) => {
-  const [pin,setPin]=useState(""); const [error,setError]=useState(false); const [shake,setShake]=useState(false);
-  const handleKey=(k)=>{ if(k==="del"){setPin(p=>p.slice(0,-1));setError(false);return;} const next=pin+k;setPin(next); if(next.length===4){if(next===PIN){onUnlock();}else{setError(true);setShake(true);setTimeout(()=>{setPin("");setError(false);setShake(false);},700);}} };
+  const [pin,setPin]=useState("");
+  const [error,setError]=useState(false);
+  const [shake,setShake]=useState(false);
+  const handleKey=(k)=>{
+    if(k==="del"){setPin(p=>p.slice(0,-1));setError(false);return;}
+    const next=pin+k; setPin(next);
+    if(next.length===4){
+      if(next===PIN){onUnlock();}
+      else{setError(true);setShake(true);setTimeout(()=>{setPin("");setError(false);setShake(false);},700);}
+    }
+  };
   return (
     <div style={{minHeight:"100vh",background:"#0a1a0f",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:32}}>
       <div style={{fontSize:48,marginBottom:8}}>🌿</div>
@@ -137,8 +303,11 @@ const LockScreen = ({onUnlock}) => {
         {[0,1,2,3].map(i=><div key={i} style={{width:16,height:16,borderRadius:"50%",background:pin.length>i?(error?RED:G):"#1e3a28",transition:"background .15s"}}/>)}
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,width:260}}>
-        {["1","2","3","4","5","6","7","8","9","","0","del"].map((k,i)=>k===""?<div key={i}/>:
-          <button key={i} onClick={()=>handleKey(k)} style={{background:"#122318",color:"#fff",border:"1px solid #1e3a28",borderRadius:16,padding:"20px 0",fontSize:k==="del"?18:24,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{k==="del"?"⌫":k}</button>
+        {["1","2","3","4","5","6","7","8","9","","0","del"].map((k,i)=>
+          k===""?<div key={i}/>:
+          <button key={i} onClick={()=>handleKey(k)} style={{background:"#122318",color:"#fff",border:"1px solid #1e3a28",borderRadius:16,padding:"20px 0",fontSize:k==="del"?18:24,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+            {k==="del"?"⌫":k}
+          </button>
         )}
       </div>
       {error&&<div style={{color:RED,marginTop:24,fontWeight:700,fontSize:13}}>Incorrect PIN</div>}
@@ -148,40 +317,41 @@ const LockScreen = ({onUnlock}) => {
 };
 
 const DEFAULT_CLIENTS = [
-  {id:"CCG001",source:"CCG",name:"Louise Bridget",address:"Balerno Rugby Club",phone:"",area:"Balerno",jobType:"Grounds Maintenance",price:50,frequency:"Monthly",lastVisit:"2026-05-01",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:120,chrisCut:true,active:true,visitHistory:["2026-05-01"],tags:[]},
-  {id:"CCG002",source:"CCG",name:"Daniel Sloss",address:"",phone:"",area:"",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"Price TBC",accessNotes:"",duration:60,chrisCut:true,active:true,visitHistory:[],tags:[]},
-  {id:"CCG003",source:"CCG",name:"Bravelaw Estate",address:"",phone:"+1 (713) 256-3101",area:"Edinburgh",jobType:"Grounds Maintenance",price:300,frequency:"Monthly",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:480,chrisCut:true,active:true,visitHistory:[],tags:[]},
-  {id:"CCG004",source:"CCG",name:"Chris Mum",address:"",phone:"",area:"",jobType:"Garden Maintenance",price:20,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:true,active:true,visitHistory:[],tags:[]},
-  {id:"CCG005",source:"CCG",name:"Chris",address:"",phone:"",area:"",jobType:"Garden Maintenance",price:30,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:true,active:true,visitHistory:[],tags:[]},
-  {id:"CCG006",source:"CCG",name:"Forrester Flats",address:"",phone:"",area:"Forrester",jobType:"Grounds Maintenance",price:null,frequency:"Monthly",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"Price TBC",accessNotes:"",duration:180,chrisCut:true,active:true,visitHistory:[],tags:[]},
-  {id:"CCG007",source:"CCG",name:"Chris Granny",address:"",phone:"",area:"",jobType:"Garden Maintenance",price:40,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:90,chrisCut:true,active:true,visitHistory:[],tags:[]},
-  {id:"CCG008",source:"CCG",name:"Parkhead",address:"",phone:"",area:"Parkhead",jobType:"Grounds Maintenance",price:40,frequency:"Monthly",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:120,chrisCut:true,active:true,visitHistory:[],tags:[]},
-  {id:"CCG009",source:"CCG",name:"Jane",address:"13 Langton View, East Calder, EH53 0LE",phone:"",area:"East Calder",jobType:"Garden Maintenance",price:30,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:90,chrisCut:true,active:true,visitHistory:[],tags:[]},
-  {id:"CCG010",source:"CCG",name:"Margret",address:"",phone:"",area:"",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:true,active:true,visitHistory:[],tags:[]},
-  {id:"CCG011",source:"CCG",name:"Illi",address:"",phone:"",area:"",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:true,active:true,visitHistory:[],tags:[]},
-  {id:"CCG012",source:"CCG",name:"Palm",address:"",phone:"",area:"",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:true,active:true,visitHistory:[],tags:[]},
-  {id:"CCG013",source:"CCG",name:"Marrion",address:"",phone:"",area:"",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:true,active:true,visitHistory:[],tags:[]},
-  {id:"CCG014",source:"CCG",name:"Scout Hall Woman",address:"",phone:"",area:"",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:true,active:true,visitHistory:[],tags:[]},
-  {id:"CCG015",source:"CCG",name:"Fourth View Road Granny",address:"10 Fourth View Road",phone:"",area:"",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:true,active:true,visitHistory:[],tags:[]},
-  {id:"CCG016",source:"CCG",name:"Langwill Place Client",address:"5 Langwill Place, Currie, EH14 5NL",phone:"",area:"Currie",jobType:"Paving & Groundworks",price:null,frequency:"One-off",lastVisit:"",confirmationStatus:"pending",isPaused:false,notes:"Grout and power wash",accessNotes:"",duration:180,chrisCut:true,active:true,visitHistory:[],tags:[]},
-  {id:"CCG017",source:"CCG",name:"Marchbank Drive Client",address:"57 Marchbank Drive, Balerno, EH14 7ER",phone:"",area:"Balerno",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"pending",isPaused:false,notes:"",accessNotes:"",duration:90,chrisCut:true,active:true,visitHistory:[],tags:[]},
-  {id:"CCG018",source:"CCG",name:"Johnsburn Road Client",address:"19 Johnsburn Road, Balerno, EH14 7DY",phone:"",area:"Balerno",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"pending",isPaused:false,notes:"",accessNotes:"",duration:90,chrisCut:true,active:true,visitHistory:[],tags:[]},
-  {id:"CCG019",source:"CCG",name:"Riccarton Drive Client",address:"5 Riccarton Drive, Currie, EH14 5PN",phone:"",area:"Currie",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"pending",isPaused:false,notes:"",accessNotes:"",duration:90,chrisCut:true,active:true,visitHistory:[],tags:[]},
-  {id:"MG001",source:"MG",name:"Russell Cairns",address:"20 Colinton Mains Grove, Edinburgh, EH13 9DQ",phone:"+44 7766 040233",area:"Colinton",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"2026-04-28",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:90,chrisCut:false,active:true,visitHistory:["2026-04-28"],tags:[]},
-  {id:"MG002",source:"MG",name:"Clare",address:"45 Willow Grove, Craigshill, Livingston, EH54 5NA",phone:"+44 7364 200875",area:"Livingston",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"2026-05-01",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:90,chrisCut:false,active:true,visitHistory:["2026-05-01"],tags:[]},
-  {id:"MG003",source:"MG",name:"Scott Murray",address:"4 Shiel Path, East Calder, EH53 0FS",phone:"",area:"East Calder",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"2026-05-05",confirmationStatus:"pending",isPaused:false,notes:"",accessNotes:"",duration:90,chrisCut:false,active:true,visitHistory:["2026-05-05"],tags:[]},
-  {id:"MG004",source:"MG",name:"Krishna Arekapudi",address:"83 Brodie Place, EH53 0TY",phone:"+44 7714 196963",area:"Livingston",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"2026-05-04",confirmationStatus:"pending",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:false,active:true,visitHistory:["2026-05-04"],tags:[]},
-  {id:"MG005",source:"MG",name:"Mikey G",address:"311 Broomhouse Road, Edinburgh, EH11 3UP",phone:"+44 7398 237243",area:"Broomhouse",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"2026-05-08",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:false,active:true,visitHistory:["2026-05-08"],tags:[]},
-  {id:"MG006",source:"MG",name:"Sally McGregor",address:"43 Bonaly Crescent, Colinton, EH13 0EP",phone:"+44 7561 801380",area:"Colinton",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"2026-05-11",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:120,chrisCut:false,active:true,visitHistory:["2026-05-11"],tags:[]},
-  {id:"MG007",source:"MG",name:"Saravanan",address:"Lilybank Road, Ratho Station, EH28",phone:"+91 95919 98168",area:"Ratho Station",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"2026-05-06",confirmationStatus:"pending",isPaused:false,notes:"",accessNotes:"",duration:90,chrisCut:false,active:true,visitHistory:["2026-05-06"],tags:[]},
-  {id:"MG008",source:"MG",name:"Kirsty Campbell",address:"3 Lilybank Lane, Ratho Station, EH28 8AW",phone:"",area:"Ratho Station",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"2026-05-15",confirmationStatus:"pending",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:false,active:true,visitHistory:["2026-05-15"],tags:[]},
-  {id:"MG009",source:"MG",name:"poorimitlaprakash",address:"20 Lilybank Road, Ratho Station, EH28",phone:"+44 7448 950184",area:"Ratho Station",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"2026-05-15",confirmationStatus:"pending",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:false,active:true,visitHistory:["2026-05-15"],tags:[]},
+  {id:"CCG001",source:"CCG",name:"Louise Bridget",address:"Balerno Rugby Club",phone:"",email:"",area:"Balerno",jobType:"Grounds Maintenance",price:50,frequency:"Monthly",lastVisit:"2026-05-01",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:120,chrisCut:true,active:true,visitHistory:["2026-05-01"],tags:[],preferredContact:"phone"},
+  {id:"CCG002",source:"CCG",name:"Daniel Sloss",address:"",phone:"",email:"",area:"",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"Price TBC",accessNotes:"",duration:60,chrisCut:true,active:true,visitHistory:[],tags:[],preferredContact:"phone"},
+  {id:"CCG003",source:"CCG",name:"Bravelaw Estate",address:"",phone:"+1 (713) 256-3101",email:"",area:"Edinburgh",jobType:"Grounds Maintenance",price:300,frequency:"Monthly",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:480,chrisCut:true,active:true,visitHistory:[],tags:[],preferredContact:"phone"},
+  {id:"CCG004",source:"CCG",name:"Chris Mum",address:"",phone:"",email:"",area:"",jobType:"Garden Maintenance",price:20,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:true,active:true,visitHistory:[],tags:[],preferredContact:"phone"},
+  {id:"CCG005",source:"CCG",name:"Chris",address:"",phone:"",email:"",area:"",jobType:"Garden Maintenance",price:30,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:true,active:true,visitHistory:[],tags:[],preferredContact:"phone"},
+  {id:"CCG006",source:"CCG",name:"Forrester Flats",address:"",phone:"",email:"",area:"Forrester",jobType:"Grounds Maintenance",price:null,frequency:"Monthly",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"Price TBC",accessNotes:"",duration:180,chrisCut:true,active:true,visitHistory:[],tags:[],preferredContact:"phone"},
+  {id:"CCG007",source:"CCG",name:"Chris Granny",address:"",phone:"",email:"",area:"",jobType:"Garden Maintenance",price:40,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:90,chrisCut:true,active:true,visitHistory:[],tags:[],preferredContact:"phone"},
+  {id:"CCG008",source:"CCG",name:"Parkhead",address:"",phone:"",email:"",area:"Parkhead",jobType:"Grounds Maintenance",price:40,frequency:"Monthly",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:120,chrisCut:true,active:true,visitHistory:[],tags:[],preferredContact:"phone"},
+  {id:"CCG009",source:"CCG",name:"Jane",address:"13 Langton View, East Calder, EH53 0LE",phone:"",email:"",area:"East Calder",jobType:"Garden Maintenance",price:30,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:90,chrisCut:true,active:true,visitHistory:[],tags:[],preferredContact:"phone"},
+  {id:"CCG010",source:"CCG",name:"Margret",address:"",phone:"",email:"",area:"",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:true,active:true,visitHistory:[],tags:[],preferredContact:"phone"},
+  {id:"CCG011",source:"CCG",name:"Illi",address:"",phone:"",email:"",area:"",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:true,active:true,visitHistory:[],tags:[],preferredContact:"phone"},
+  {id:"CCG012",source:"CCG",name:"Palm",address:"",phone:"",email:"",area:"",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:true,active:true,visitHistory:[],tags:[],preferredContact:"phone"},
+  {id:"CCG013",source:"CCG",name:"Marrion",address:"",phone:"",email:"",area:"",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:true,active:true,visitHistory:[],tags:[],preferredContact:"phone"},
+  {id:"CCG014",source:"CCG",name:"Scout Hall Woman",address:"",phone:"",email:"",area:"",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:true,active:true,visitHistory:[],tags:[],preferredContact:"phone"},
+  {id:"CCG015",source:"CCG",name:"Fourth View Road Granny",address:"10 Fourth View Road",phone:"",email:"",area:"",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:true,active:true,visitHistory:[],tags:[],preferredContact:"phone"},
+  {id:"CCG016",source:"CCG",name:"Langwill Place Client",address:"5 Langwill Place, Currie, EH14 5NL",phone:"",email:"",area:"Currie",jobType:"Paving & Groundworks",price:null,frequency:"One-off",lastVisit:"",confirmationStatus:"pending",isPaused:false,notes:"Grout and power wash",accessNotes:"",duration:180,chrisCut:true,active:true,visitHistory:[],tags:[],preferredContact:"phone"},
+  {id:"CCG017",source:"CCG",name:"Marchbank Drive Client",address:"57 Marchbank Drive, Balerno, EH14 7ER",phone:"",email:"",area:"Balerno",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"pending",isPaused:false,notes:"",accessNotes:"",duration:90,chrisCut:true,active:true,visitHistory:[],tags:[],preferredContact:"phone"},
+  {id:"CCG018",source:"CCG",name:"Johnsburn Road Client",address:"19 Johnsburn Road, Balerno, EH14 7DY",phone:"",email:"",area:"Balerno",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"pending",isPaused:false,notes:"",accessNotes:"",duration:90,chrisCut:true,active:true,visitHistory:[],tags:[],preferredContact:"phone"},
+  {id:"CCG019",source:"CCG",name:"Riccarton Drive Client",address:"5 Riccarton Drive, Currie, EH14 5PN",phone:"",email:"",area:"Currie",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"pending",isPaused:false,notes:"",accessNotes:"",duration:90,chrisCut:true,active:true,visitHistory:[],tags:[],preferredContact:"phone"},
+  {id:"MG001",source:"MG",name:"Russell Cairns",address:"20 Colinton Mains Grove, Edinburgh, EH13 9DQ",phone:"+44 7766 040233",email:"",area:"Colinton",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"2026-04-28",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:90,chrisCut:false,active:true,visitHistory:["2026-04-28"],tags:[],preferredContact:"phone"},
+  {id:"MG002",source:"MG",name:"Clare",address:"45 Willow Grove, Craigshill, Livingston, EH54 5NA",phone:"+44 7364 200875",email:"",area:"Livingston",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"2026-05-01",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:90,chrisCut:false,active:true,visitHistory:["2026-05-01"],tags:[],preferredContact:"phone"},
+  {id:"MG003",source:"MG",name:"Scott Murray",address:"4 Shiel Path, East Calder, EH53 0FS",phone:"",email:"",area:"East Calder",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"2026-05-05",confirmationStatus:"pending",isPaused:false,notes:"",accessNotes:"",duration:90,chrisCut:false,active:true,visitHistory:["2026-05-05"],tags:[],preferredContact:"phone"},
+  {id:"MG004",source:"MG",name:"Krishna Arekapudi",address:"83 Brodie Place, EH53 0TY",phone:"+44 7714 196963",email:"",area:"Livingston",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"2026-05-04",confirmationStatus:"pending",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:false,active:true,visitHistory:["2026-05-04"],tags:[],preferredContact:"phone"},
+  {id:"MG005",source:"MG",name:"Mikey G",address:"311 Broomhouse Road, Edinburgh, EH11 3UP",phone:"+44 7398 237243",email:"",area:"Broomhouse",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"2026-05-08",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:false,active:true,visitHistory:["2026-05-08"],tags:[],preferredContact:"phone"},
+  {id:"MG006",source:"MG",name:"Sally McGregor",address:"43 Bonaly Crescent, Colinton, EH13 0EP",phone:"+44 7561 801380",email:"",area:"Colinton",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"2026-05-11",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:120,chrisCut:false,active:true,visitHistory:["2026-05-11"],tags:[],preferredContact:"phone"},
+  {id:"MG007",source:"MG",name:"Saravanan",address:"Lilybank Road, Ratho Station, EH28",phone:"+91 95919 98168",email:"",area:"Ratho Station",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"2026-05-06",confirmationStatus:"pending",isPaused:false,notes:"",accessNotes:"",duration:90,chrisCut:false,active:true,visitHistory:["2026-05-06"],tags:[],preferredContact:"whatsapp"},
+  {id:"MG008",source:"MG",name:"Kirsty Campbell",address:"3 Lilybank Lane, Ratho Station, EH28 8AW",phone:"",email:"",area:"Ratho Station",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"2026-05-15",confirmationStatus:"pending",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:false,active:true,visitHistory:["2026-05-15"],tags:[],preferredContact:"phone"},
+  {id:"MG009",source:"MG",name:"poorimitlaprakash",address:"20 Lilybank Road, Ratho Station, EH28",phone:"+44 7448 950184",email:"",area:"Ratho Station",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"2026-05-15",confirmationStatus:"pending",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:false,active:true,visitHistory:["2026-05-15"],tags:[],preferredContact:"whatsapp"},
 ];
 const blankClient = (count) => ({
-  id:`MG${String(count+1).padStart(3,"0")}`, source:"MG", name:"", address:"", phone:"", area:"",
-  jobType:"Garden Maintenance", price:"", frequency:DEFAULT_FREQ, lastVisit:"",
-  confirmationStatus:"confirmed", isPaused:false, notes:"", accessNotes:"",
-  duration:60, chrisCut:false, active:true, visitHistory:[], tags:[],
+  id:`MG${String(count+1).padStart(3,"0")}`, source:"MG", name:"", address:"",
+  phone:"", email:"", area:"", jobType:"Garden Maintenance", price:"",
+  frequency:DEFAULT_FREQ, lastVisit:"", confirmationStatus:"confirmed",
+  isPaused:false, notes:"", accessNotes:"", duration:60, chrisCut:false,
+  active:true, visitHistory:[], tags:[], preferredContact:"phone",
 });
 
 export default function App() {
@@ -196,9 +366,8 @@ export default function App() {
   const [sortBy,setSortBy]=useState("urgency");
   const [payFilter,setPayFilter]=useState("unpaid");
   const [selected,setSelected]=useState(null);
-  const [editing,setEditing]=useState(null);
+  const [editingClient,setEditingClient]=useState(null);
   const [addingClient,setAddingClient]=useState(false);
-  const [newClient,setNewClient]=useState(null);
   const [toast,setToast]=useState(null);
   const [confirmDelete,setConfirmDelete]=useState(null);
   const [showFilters,setShowFilters]=useState(false);
@@ -223,24 +392,20 @@ export default function App() {
   const totalPaidWeek=weekPaid.reduce((s,v)=>s+(v.price||0),0);
   const totalPaidMonth=monthPaid.reduce((s,v)=>s+(v.price||0),0);
 
-  // ── LOAD FROM SUPABASE ──
   useEffect(()=>{
     if(!unlocked) return;
-    const load = async () => {
+    const load=async()=>{
       setLoading(true);
       try {
-        const [dbClients, dbVisits] = await Promise.all([db.getClients(), db.getVisits()]);
-        if(dbClients && dbClients.length > 0) {
+        const [dbClients,dbVisits]=await Promise.all([db.getClients(),db.getVisits()]);
+        if(dbClients&&dbClients.length>0){
           setRawClients(dbClients.map(fromDb));
         } else {
-          // First time — seed with default clients
-          for(const c of DEFAULT_CLIENTS) { await db.saveClient(c); }
+          for(const c of DEFAULT_CLIENTS){ await db.saveClient(c); }
           setRawClients(DEFAULT_CLIENTS);
         }
-        if(dbVisits && dbVisits.length > 0) {
-          setVisits(dbVisits.map(visitFromDb));
-        }
-      } catch(e) {
+        if(dbVisits&&dbVisits.length>0){ setVisits(dbVisits.map(visitFromDb)); }
+      } catch(e){
         showToast("Connection error — working offline","error");
         setRawClients(DEFAULT_CLIENTS);
       }
@@ -249,14 +414,12 @@ export default function App() {
     load();
   },[unlocked]);
 
-  // ── ACTIONS ──
-  const updateClient = async (updated) => {
-    const list = rawClients.map(c=>c.id===updated.id?updated:c);
-    setRawClients(list);
+  const updateClient=async(updated)=>{
+    setRawClients(prev=>prev.map(c=>c.id===updated.id?updated:c));
     await db.saveClient(updated);
   };
 
-  const markVisited = async (id) => {
+  const markVisited=async(id)=>{
     const client=clients.find(c=>c.id===id);
     if(!client) return;
     const newVisit={id:makeId(),clientId:id,clientName:client.name,visitDate:TODAY,price:client.price||null,paymentStatus:"unpaid",paymentMethod:null,paymentDate:null,notes:""};
@@ -270,41 +433,57 @@ export default function App() {
 
   const openPayModal=(visit)=>setPayModal({...visit,_method:"Cash"});
 
-  const confirmPayment = async () => {
+  const confirmPayment=async()=>{
     if(!payModal) return;
-    const updates={payment_status:"paid",payment_method:payModal._method,payment_date:TODAY};
     setVisits(prev=>prev.map(v=>v.id===payModal.id?{...v,paymentStatus:"paid",paymentMethod:payModal._method,paymentDate:TODAY}:v));
-    await db.updateVisit(payModal.id,updates);
+    await db.updateVisit(payModal.id,{payment_status:"paid",payment_method:payModal._method,payment_date:TODAY});
     setPayModal(null);
     showToast("💷 Payment confirmed!");
   };
 
-  const confirmClient = async (id) => { await updateClient({...rawClients.find(c=>c.id===id),confirmationStatus:"confirmed"}); showToast("✅ Confirmed!"); };
-  const pauseClient = async (id) => { await updateClient({...rawClients.find(c=>c.id===id),isPaused:true}); setSelected(null); showToast("⏸ Paused"); };
-  const archiveClient = async (id) => { await updateClient({...rawClients.find(c=>c.id===id),active:false}); setSelected(null); showToast("Archived"); };
-
-  const deleteClient = async (id) => {
+  const confirmClient=async(id)=>{
+    const c=rawClients.find(x=>x.id===id);
+    if(c){ await updateClient({...c,confirmationStatus:"confirmed"}); showToast("✅ Confirmed!"); }
+  };
+  const pauseClient=async(id)=>{
+    const c=rawClients.find(x=>x.id===id);
+    if(c){ await updateClient({...c,isPaused:true}); setSelected(null); showToast("⏸ Paused"); }
+  };
+  const archiveClient=async(id)=>{
+    const c=rawClients.find(x=>x.id===id);
+    if(c){ await updateClient({...c,active:false}); setSelected(null); showToast("Archived"); }
+  };
+  const deleteClient=async(id)=>{
     setRawClients(prev=>prev.filter(c=>c.id!==id));
     await db.deleteClient(id);
     setSelected(null); setConfirmDelete(null);
     showToast("Removed");
   };
 
-  const saveEdit = async (updated) => {
-    const toSave={...updated,price:updated.price?parseFloat(updated.price):null};
-    await updateClient(toSave);
-    setEditing(null);
-    setSelected(calcSchedule(toSave));
-    showToast("✅ Saved!");
+  const saveClient=async(data)=>{
+    const toSave={...data,price:data.price?parseFloat(data.price):null};
+    if(addingClient){
+      setRawClients(prev=>[...prev,toSave]);
+      await db.saveClient(toSave);
+      setAddingClient(false);
+      showToast("✅ Client added!");
+    } else {
+      await updateClient(toSave);
+      setSelected(calcSchedule(toSave));
+      setEditingClient(null);
+      showToast("✅ Saved!");
+    }
   };
 
-  const saveNewClient = async () => {
-    if(!newClient.name.trim()){showToast("Enter a name","error");return;}
-    const toSave={...newClient,price:newClient.price?parseFloat(newClient.price):null};
-    setRawClients(prev=>[...prev,toSave]);
-    await db.saveClient(toSave);
-    setAddingClient(false); setNewClient(null);
-    showToast("✅ Client added!");
+  const getContactAction=(c)=>{
+    if(!c.phone) return null;
+    const clean=c.phone.replace(/\s+/g,"");
+    switch(c.preferredContact){
+      case "whatsapp": return {url:`https://wa.me/${clean.replace("+","")}`,label:"💬 WhatsApp"};
+      case "text": return {url:`sms:${c.phone}`,label:"💬 Text"};
+      case "email": return c.email?{url:`mailto:${c.email}`,label:"📧 Email"}:null;
+      default: return {url:`tel:${c.phone}`,label:"📞 Call"};
+    }
   };
 
   if(!unlocked) return <LockScreen onUnlock={()=>setUnlocked(true)}/>;
@@ -312,61 +491,36 @@ export default function App() {
   if(loading) return (
     <div style={{minHeight:"100vh",background:"#f8fafc",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
       <div style={{fontSize:48}}>🌿</div>
-      <div style={{fontWeight:700,fontSize:16,color:"#1a6b3c"}}>Loading moegardens...</div>
+      <div style={{fontWeight:700,fontSize:16,color:G}}>Loading moegardens...</div>
       <div style={{fontSize:13,color:"#94a3b8"}}>Connecting to database</div>
     </div>
   );
 
-  const InputField=({label,field,type="text",options,obj,setObj})=>(
-    <div style={{marginBottom:14}}>
-      <label style={st.label}>{label}</label>
-      {type==="select"?<select style={st.input} value={obj[field]||""} onChange={e=>setObj(p=>({...p,[field]:e.target.value}))}>{options.map(o=><option key={o} value={o}>{o}</option>)}</select>
-      :type==="textarea"?<textarea style={{...st.input,resize:"vertical",minHeight:70}} value={obj[field]||""} onChange={e=>setObj(p=>({...p,[field]:e.target.value}))} placeholder={label}/>
-      :<input type={type} style={st.input} value={obj[field]||""} onChange={e=>setObj(p=>({...p,[field]:e.target.value}))} placeholder={label}/>}
+  if(addingClient) return (
+    <div style={st.app}>
+      <div style={st.content}>
+        <ClientForm
+          key="add-client"
+          initialData={blankClient(rawClients.length)}
+          onSave={saveClient}
+          onCancel={()=>setAddingClient(false)}
+          title="New Client"
+        />
+      </div>
     </div>
   );
 
-  const ClientForm=({obj,setObj,onSave,onCancel,title})=>(
-    <div>
-      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
-        <button style={st.btnSm("#f1f5f9","#0f172a")} onClick={onCancel}>← Back</button>
-        <div style={{fontSize:20,fontWeight:800}}>{title}</div>
+  if(editingClient) return (
+    <div style={st.app}>
+      <div style={st.content}>
+        <ClientForm
+          key={`edit-${editingClient.id}`}
+          initialData={editingClient}
+          onSave={saveClient}
+          onCancel={()=>setEditingClient(null)}
+          title="Edit Client"
+        />
       </div>
-      <div style={st.card}>
-        <div style={st.secTitle}>Contact</div>
-        <InputField label="Full Name *" field="name" obj={obj} setObj={setObj}/>
-        <InputField label="Phone" field="phone" type="tel" obj={obj} setObj={setObj}/>
-        <InputField label="Address" field="address" type="textarea" obj={obj} setObj={setObj}/>
-        <InputField label="Area" field="area" obj={obj} setObj={setObj}/>
-      </div>
-      <div style={st.card}>
-        <div style={st.secTitle}>Scheduling</div>
-        <InputField label="Last Visit Date" field="lastVisit" type="date" obj={obj} setObj={setObj}/>
-        <InputField label="Frequency" field="frequency" type="select" options={FREQUENCIES} obj={obj} setObj={setObj}/>
-        <div style={{background:"#f0fdf4",borderRadius:10,padding:"10px 12px",fontSize:12,color:G,fontWeight:600,marginBottom:10}}>
-          📅 Next visit auto-calculates from last visit + frequency
-        </div>
-        <InputField label="Confirmation Status" field="confirmationStatus" type="select" options={["confirmed","pending"]} obj={obj} setObj={setObj}/>
-      </div>
-      <div style={st.card}>
-        <div style={st.secTitle}>Job & Payment</div>
-        <InputField label="Job Type" field="jobType" type="select" options={JOB_TYPES} obj={obj} setObj={setObj}/>
-        <InputField label="Price per Visit (£)" field="price" type="number" obj={obj} setObj={setObj}/>
-        <InputField label="Duration (mins)" field="duration" type="number" obj={obj} setObj={setObj}/>
-        <InputField label="Source" field="source" type="select" options={["MG","CCG"]} obj={obj} setObj={setObj}/>
-        <div style={{display:"flex",alignItems:"center",gap:10,marginTop:8,cursor:"pointer"}} onClick={()=>setObj(p=>({...p,chrisCut:!p.chrisCut}))}>
-          <div style={{width:22,height:22,borderRadius:7,border:`2px solid ${obj.chrisCut?G:"#cbd5e1"}`,background:obj.chrisCut?G:"transparent",display:"flex",alignItems:"center",justifyContent:"center"}}>
-            {obj.chrisCut&&<span style={{color:"#fff",fontSize:13}}>✓</span>}
-          </div>
-          <span style={{fontSize:14,fontWeight:500}}>Chris 30% cut applies</span>
-        </div>
-      </div>
-      <div style={st.card}>
-        <div style={st.secTitle}>Notes</div>
-        <InputField label="General Notes" field="notes" type="textarea" obj={obj} setObj={setObj}/>
-        <InputField label="Access Instructions" field="accessNotes" type="textarea" obj={obj} setObj={setObj}/>
-      </div>
-      <button style={{...st.btn(G,"#fff",true),padding:"14px",fontSize:15,borderRadius:14,marginBottom:16}} onClick={onSave}>Save Client</button>
     </div>
   );
 
@@ -435,7 +589,7 @@ export default function App() {
           <div style={st.secTitle}>Quick Actions</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
             {[
-              {label:"➕ Add Client",bg:G,color:"#fff",fn:()=>{setNewClient(blankClient(rawClients.length));setAddingClient(true);setPage("clients");}},
+              {label:"➕ Add Client",bg:G,color:"#fff",fn:()=>setAddingClient(true)},
               {label:"👥 All Clients",bg:"#f1f5f9",color:"#0f172a",fn:()=>setPage("clients")},
               {label:"🔴 Revisits",bg:"#fef2f2",color:RED,fn:()=>setPage("revisits")},
               {label:"💷 Payments",bg:"#f0fdf4",color:G,fn:()=>setPage("payments")},
@@ -450,6 +604,7 @@ export default function App() {
 
   const ClientRow=({c})=>{
     const clientUnpaid=visits.filter(v=>v.clientId===c.id&&v.paymentStatus==="unpaid");
+    const contactAction=getContactAction(c);
     return (
       <div style={{...st.card,marginBottom:8,borderLeft:`3px solid ${STATUS_CFG[c.visitStatus]?.color||"#e8ecf0"}`,cursor:"pointer"}} onClick={()=>setSelected(c)}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
@@ -462,7 +617,8 @@ export default function App() {
           {c.lastVisit&&<span style={{fontSize:11,color:"#94a3b8"}}>Last: {fmtDate(c.lastVisit)}</span>}
           {c.visitStatus==="overdue"&&<span style={{fontSize:11,fontWeight:800,color:RED}}>{c.overdueDays}d overdue</span>}
           {clientUnpaid.length>0&&<span style={{...st.badge(RED,"#fee2e2"),fontSize:10}}>💷 {clientUnpaid.length} unpaid</span>}
-          <span style={{fontWeight:800,color:G,marginLeft:"auto",fontSize:14}}>{fmtPrice(c.price)}</span>
+          {contactAction&&<a href={contactAction.url} onClick={e=>e.stopPropagation()} style={{fontSize:11,color:G,fontWeight:700,textDecoration:"none",marginLeft:"auto"}}>{contactAction.label}</a>}
+          {!contactAction&&<span style={{fontWeight:800,color:G,marginLeft:"auto",fontSize:14}}>{fmtPrice(c.price)}</span>}
         </div>
       </div>
     );
@@ -492,7 +648,7 @@ export default function App() {
           <div style={{fontSize:13,color:"#94a3b8",fontWeight:600}}>{sorted.length} clients</div>
           <div style={{display:"flex",gap:8}}>
             <button style={st.btnSm(showFilters?"#0f172a":"#f1f5f9",showFilters?"#fff":"#64748b")} onClick={()=>setShowFilters(p=>!p)}>⚙ Filter</button>
-            <button style={st.btnSm(G,"#fff")} onClick={()=>{setNewClient(blankClient(rawClients.length));setAddingClient(true);}}>➕ Add</button>
+            <button style={st.btnSm(G,"#fff")} onClick={()=>setAddingClient(true)}>➕ Add</button>
           </div>
         </div>
         <input style={{...st.input,marginBottom:10}} placeholder="🔍 Search name, area, phone..." value={search} onChange={e=>setSearch(e.target.value)}/>
@@ -537,35 +693,50 @@ export default function App() {
     const totalEarned=clientPaid.reduce((s,v)=>s+(v.price||0),0);
     const totalOwed=clientUnpaid.reduce((s,v)=>s+(v.price||0),0);
     const cfg=STATUS_CFG[c.visitStatus]||{};
+    const contactAction=getContactAction(c);
+    const contactLabel=CONTACT_METHODS.find(m=>m.value===c.preferredContact)?.label||"📞 Phone Call";
     return (
       <div>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16,flexWrap:"wrap"}}>
           <button style={st.btnSm("#f1f5f9","#0f172a")} onClick={()=>setSelected(null)}>← Back</button>
-          <button style={st.btnSm(G,"#fff")} onClick={()=>setEditing({...c,price:c.price!=null?String(c.price):""})}>✏️ Edit</button>
+          <button style={st.btnSm(G,"#fff")} onClick={()=>setEditingClient(c)}>✏️ Edit</button>
           <button style={st.btnSm("#fff2f2",RED)} onClick={()=>setConfirmDelete(c.id)}>🗑</button>
           <button style={st.btnSm("#f1f5f9","#64748b")} onClick={()=>pauseClient(c.id)}>⏸ Pause</button>
           <button style={st.btnSm("#f1f5f9","#64748b")} onClick={()=>archiveClient(c.id)}>Archive</button>
         </div>
         <div style={{...st.card,borderLeft:`4px solid ${cfg.color||G}`,marginBottom:12}}>
           <div style={{fontSize:22,fontWeight:800,marginBottom:8}}>{c.name}</div>
-          <StatusBadge status={c.visitStatus}/>
-          {c.visitStatus==="overdue"&&<div style={{marginTop:8,fontWeight:700,color:RED,fontSize:13}}>⚠️ {c.overdueDays} days overdue</div>}
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            <StatusBadge status={c.visitStatus}/>
+            {c.visitStatus==="overdue"&&<span style={{...st.badge(RED,"#fee2e2")}}>{c.overdueDays}d overdue</span>}
+          </div>
         </div>
+
+        <div style={st.card}>
+          <div style={st.secTitle}>Contact</div>
+          <div style={{...st.row}}><span style={{fontSize:13,color:"#64748b",fontWeight:600}}>Preferred Method</span><span style={{fontSize:13,fontWeight:700}}>{contactLabel}</span></div>
+          {[["Phone",c.phone||"—"],["Email",c.email||"—"],["Area",c.area||"—"],["Address",c.address||"—"]].map(([k,v])=>(
+            <div key={k} style={st.row}>
+              <span style={{fontSize:13,color:"#64748b",fontWeight:600}}>{k}</span>
+              <span style={{fontSize:13,fontWeight:600,maxWidth:200,textAlign:"right"}}>{v}</span>
+            </div>
+          ))}
+          {contactAction&&(
+            <div style={{marginTop:12,display:"flex",gap:8,flexWrap:"wrap"}}>
+              <a href={contactAction.url} style={{...st.btn(G,"#fff"),borderRadius:12,textDecoration:"none",fontSize:13}}>{contactAction.label}</a>
+              {c.phone&&c.preferredContact!=="phone"&&<a href={`tel:${c.phone}`} style={{...st.btnSm("#f1f5f9","#0f172a"),textDecoration:"none"}}>📞 Call</a>}
+              {c.phone&&c.preferredContact!=="text"&&<a href={`sms:${c.phone}`} style={{...st.btnSm("#f1f5f9","#0f172a"),textDecoration:"none"}}>💬 Text</a>}
+            </div>
+          )}
+        </div>
+
         <div style={st.card}>
           <div style={st.secTitle}>Schedule</div>
-          {[["Frequency",c.frequency||DEFAULT_FREQ],["Last Visit",fmtDate(c.lastVisit)],["Days Since",c.daysSinceVisit!=null?`${c.daysSinceVisit} days`:"—"],["Next Due",fmtDate(c.nextVisit)],["Status",c.visitStatus==="overdue"?`${c.overdueDays}d overdue`:c.daysUntilDue!=null?`${c.daysUntilDue}d away`:"—"]].map(([k,v])=>(
+          {[["Frequency",c.frequency||DEFAULT_FREQ],["Last Visit",fmtDate(c.lastVisit)],["Days Since",c.daysSinceVisit!=null?`${c.daysSinceVisit} days`:"—"],["Next Due",fmtDate(c.nextVisit)],["Days Away",c.visitStatus==="overdue"?`${c.overdueDays}d overdue`:c.daysUntilDue!=null?`${c.daysUntilDue}d`:"—"]].map(([k,v])=>(
             <div key={k} style={st.row}><span style={{fontSize:13,color:"#64748b",fontWeight:600}}>{k}</span><span style={{fontSize:13,fontWeight:700}}>{v}</span></div>
           ))}
         </div>
-        <div style={st.card}>
-          <div style={st.secTitle}>Contact</div>
-          {[["Phone",c.phone||"—"],["Area",c.area||"—"],["Address",c.address||"—"]].map(([k,v])=>(
-            <div key={k} style={st.row}>
-              <span style={{fontSize:13,color:"#64748b",fontWeight:600}}>{k}</span>
-              {k==="Phone"&&c.phone?<a href={`tel:${c.phone}`} style={{fontSize:13,fontWeight:700,color:G,textDecoration:"none"}}>{v}</a>:<span style={{fontSize:13,fontWeight:600,maxWidth:200,textAlign:"right"}}>{v}</span>}
-            </div>
-          ))}
-        </div>
+
         <div style={st.card}>
           <div style={st.secTitle}>💷 Payment Summary</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
@@ -578,7 +749,7 @@ export default function App() {
           </div>
           {clientUnpaid.length>0&&(
             <div style={{background:"#fef2f2",borderRadius:10,padding:"10px 12px",marginBottom:8}}>
-              <div style={{fontSize:12,fontWeight:700,color:RED,marginBottom:6}}>{clientUnpaid.length} unpaid visit{clientUnpaid.length>1?"s":""} — £{totalOwed} owed</div>
+              <div style={{fontSize:12,fontWeight:700,color:RED,marginBottom:6}}>{clientUnpaid.length} unpaid — £{totalOwed} owed</div>
               {clientUnpaid.map(v=>(
                 <div key={v.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid #fee2e2"}}>
                   <div style={{fontSize:12,fontWeight:600}}>{fmtDate(v.visitDate)}</div>
@@ -591,6 +762,7 @@ export default function App() {
             </div>
           )}
         </div>
+
         {clientVisits.length>0&&(
           <div style={st.card}>
             <div style={st.secTitle}>Visit History ({clientVisits.length})</div>
@@ -606,6 +778,7 @@ export default function App() {
             ))}
           </div>
         )}
+
         {(c.notes||c.accessNotes)&&(
           <div style={st.card}>
             <div style={st.secTitle}>Notes</div>
@@ -613,10 +786,10 @@ export default function App() {
             {c.accessNotes&&<div><div style={{fontSize:11,fontWeight:700,color:"#94a3b8",marginBottom:3}}>ACCESS</div><div style={{fontSize:13,lineHeight:1.5}}>{c.accessNotes}</div></div>}
           </div>
         )}
+
         <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:16}}>
           <button style={{...st.btn("#dcfce7","#16a34a"),borderRadius:12}} onClick={()=>markVisited(c.id)}>✅ Mark Visited Today</button>
           {c.visitStatus==="pending-confirmation"&&<button style={{...st.btn(G,"#fff"),borderRadius:12}} onClick={()=>confirmClient(c.id)}>✓ Confirm Active</button>}
-          {c.phone&&<a href={`tel:${c.phone}`} style={{...st.btn("#f1f5f9","#0f172a"),borderRadius:12,textDecoration:"none"}}>📞 Call</a>}
         </div>
       </div>
     );
@@ -639,6 +812,7 @@ export default function App() {
         {sorted.map(c=>{
           const cfg=STATUS_CFG[c.visitStatus]||{};
           const clientUnpaidCount=visits.filter(v=>v.clientId===c.id&&v.paymentStatus==="unpaid").length;
+          const contactAction=getContactAction(c);
           return (
             <div key={c.id} style={{...st.card,borderLeft:`3px solid ${cfg.color||"#e8ecf0"}`,marginBottom:8}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
@@ -656,7 +830,7 @@ export default function App() {
               </div>
               {clientUnpaidCount>0&&<div style={{fontSize:11,color:RED,fontWeight:700,marginBottom:8}}>💷 {clientUnpaidCount} unpaid visit{clientUnpaidCount>1?"s":""}</div>}
               <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                {c.phone&&<a href={`tel:${c.phone}`} style={{...st.btnSm(G,"#fff"),textDecoration:"none"}}>📞 Call</a>}
+                {contactAction&&<a href={contactAction.url} style={{...st.btnSm(G,"#fff"),textDecoration:"none"}}>{contactAction.label}</a>}
                 <button style={st.btnSm("#dcfce7","#16a34a")} onClick={()=>markVisited(c.id)}>✅ Visited Today</button>
                 {c.visitStatus==="pending-confirmation"&&<button style={st.btnSm("#eef2ff","#6366f1")} onClick={()=>confirmClient(c.id)}>✓ Confirm</button>}
                 <button style={st.btnSm("#f1f5f9","#0f172a")} onClick={()=>setSelected(c)}>View →</button>
@@ -789,9 +963,7 @@ export default function App() {
             </div>
           </div>
         )}
-        {addingClient?<ClientForm obj={newClient} setObj={setNewClient} onSave={saveNewClient} onCancel={()=>{setAddingClient(false);setNewClient(null);}} title="New Client"/>:
-         editing?<ClientForm obj={editing} setObj={setEditing} onSave={()=>saveEdit(editing)} onCancel={()=>setEditing(null)} title="Edit Client"/>:
-         selected?<ClientDetail c={selected}/>:
+        {selected?<ClientDetail c={selected}/>:
          page==="dashboard"?<Dashboard/>:
          page==="clients"?<ClientList/>:
          page==="revisits"?<Revisits/>:
@@ -799,7 +971,7 @@ export default function App() {
       </div>
       <div style={st.bottomnav}>
         {navItems.map(n=>(
-          <button key={n.id} style={{...st.navbtn,color:page===n.id?G:"#94a3b8"}} onClick={()=>{setSelected(null);setEditing(null);setAddingClient(false);setNewClient(null);setPage(n.id);}}>
+          <button key={n.id} style={{...st.navbtn,color:page===n.id?G:"#94a3b8"}} onClick={()=>{setSelected(null);setPage(n.id);}}>
             <span style={{fontSize:22}}>{n.icon}</span>
             <span style={{fontSize:10,fontWeight:700}}>{n.label}</span>
           </button>
