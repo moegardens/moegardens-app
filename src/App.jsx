@@ -12,7 +12,7 @@ const db = {
     await fetch(`${SUPABASE_URL}/rest/v1/clients`, {
       method: "POST",
       headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" },
-      body: JSON.stringify({ id:c.id, source:c.source, name:c.name, address:c.address, phone:c.phone, area:c.area, job_type:c.jobType, price:c.price, frequency:c.frequency, last_visit:c.lastVisit, confirmation_status:c.confirmationStatus, is_paused:c.isPaused, notes:c.notes, access_notes:c.accessNotes, duration:c.duration, chris_cut:c.chrisCut, active:c.active, visit_history:c.visitHistory||[], tags:c.tags||[], preferred_contact:c.preferredContact||"phone" })
+      body: JSON.stringify({ id:c.id, source:c.source, name:c.name, address:c.address, phone:c.phone, email:c.email||"", area:c.area, job_type:c.jobType, price:c.price, frequency:c.frequency, last_visit:c.lastVisit, confirmation_status:c.confirmationStatus, is_paused:c.isPaused, notes:c.notes, access_notes:c.accessNotes, duration:c.duration, chris_cut:c.chrisCut, active:c.active, visit_history:c.visitHistory||[], tags:c.tags||[], preferred_contact:c.preferredContact||"phone" })
     });
   },
   async deleteClient(id) {
@@ -36,84 +36,81 @@ const db = {
       body: JSON.stringify(updates)
     });
   },
+  async getBookings() {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/bookings?order=date`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } });
+    return r.json();
+  },
+  async saveBooking(b) {
+    await fetch(`${SUPABASE_URL}/rest/v1/bookings`, {
+      method: "POST",
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" },
+      body: JSON.stringify({ id:b.id, client_id:b.clientId, client_name:b.clientName, booking_type:b.bookingType, job_type:b.jobType, date:b.date, time:b.time, price:b.price, notes:b.notes, status:b.status, payment_status:b.paymentStatus, affects_schedule:b.affectsSchedule, completed_at:b.completedAt, payment_method:b.paymentMethod, payment_date:b.paymentDate })
+    });
+  },
+  async deleteBooking(id) {
+    await fetch(`${SUPABASE_URL}/rest/v1/bookings?id=eq.${id}`, { method: "DELETE", headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } });
+  },
 };
 
 const fromDb = (c) => ({
   id:c.id, source:c.source, name:c.name, address:c.address||"", phone:c.phone||"",
-  area:c.area||"", jobType:c.job_type||"Garden Maintenance", price:c.price,
-  frequency:c.frequency||"Every 2 Weeks", lastVisit:c.last_visit||"",
+  email:c.email||"", area:c.area||"", jobType:c.job_type||"Garden Maintenance",
+  price:c.price, frequency:c.frequency||"Every 2 Weeks", lastVisit:c.last_visit||"",
   confirmationStatus:c.confirmation_status||"confirmed", isPaused:c.is_paused||false,
   notes:c.notes||"", accessNotes:c.access_notes||"", duration:c.duration||60,
   chrisCut:c.chris_cut||false, active:c.active!==false, visitHistory:c.visit_history||[],
   tags:c.tags||[], preferredContact:c.preferred_contact||"phone",
 });
-
 const visitFromDb = (v) => ({
   id:v.id, clientId:v.client_id, clientName:v.client_name, visitDate:v.visit_date,
   price:v.price, paymentStatus:v.payment_status||"unpaid", paymentMethod:v.payment_method,
   paymentDate:v.payment_date, notes:v.notes||"",
 });
+const bookingFromDb = (b) => ({
+  id:b.id, clientId:b.client_id, clientName:b.client_name, bookingType:b.booking_type||"one-off",
+  jobType:b.job_type||"Garden Maintenance", date:b.date, time:b.time||"",
+  price:b.price, notes:b.notes||"", status:b.status||"scheduled",
+  paymentStatus:b.payment_status||"unpaid", affectsSchedule:b.affects_schedule||false,
+  completedAt:b.completed_at||"", paymentMethod:b.payment_method||"",
+  paymentDate:b.payment_date||"",
+});
 
-const G = "#1a6b3c";
-const AMBER = "#f59e0b";
-const RED = "#dc2626";
-const ORANGE = "#ea580c";
-const BLUE = "#3b82f6";
-const PIN = "2607";
+const G="#1a6b3c", AMBER="#f59e0b", RED="#dc2626", ORANGE="#ea580c", BLUE="#3b82f6", PURPLE="#7c3aed";
+const PIN="2607";
 
-const FREQ_CONFIG = {
-  "Weekly":        { days: 7 },
-  "Every 2 Weeks": { days: 14 },
-  "Every 3 Weeks": { days: 21 },
-  "Every 4 Weeks": { days: 28 },
-  "Monthly":       { days: 30 },
-  "One-off":       { days: null },
-};
+const FREQ_CONFIG = { "Weekly":{days:7}, "Every 2 Weeks":{days:14}, "Every 3 Weeks":{days:21}, "Every 4 Weeks":{days:28}, "Monthly":{days:30}, "One-off":{days:null} };
 const FREQUENCIES = Object.keys(FREQ_CONFIG);
 const DEFAULT_FREQ = "Every 2 Weeks";
 const JOB_TYPES = ["Garden Maintenance","Grounds Maintenance","Lawn Care","Hedge Trimming","Paving & Groundworks","Tree Work","One-off Clear","Other"];
 const PAYMENT_METHODS = ["Cash","Bank Transfer","Card","Other"];
-const CONTACT_METHODS = [
-  { value:"phone",     label:"📞 Phone Call" },
-  { value:"whatsapp",  label:"💬 WhatsApp" },
-  { value:"messenger", label:"💙 Messenger" },
-  { value:"text",      label:"💬 Text Message" },
-  { value:"email",     label:"📧 Email" },
-  { value:"other",     label:"Other" },
-];
+const CONTACT_METHODS = [{value:"phone",label:"📞 Phone Call"},{value:"whatsapp",label:"💬 WhatsApp"},{value:"messenger",label:"💙 Messenger"},{value:"text",label:"💬 Text Message"},{value:"email",label:"📧 Email"},{value:"other",label:"Other"}];
+const BOOKING_TYPES = [{value:"one-off",label:"One-off Job",color:BLUE},{value:"revisit",label:"Regular Revisit",color:G},{value:"quote",label:"Quote / Estimate",color:PURPLE},{value:"extra",label:"Extra Job",color:ORANGE},{value:"followup",label:"Follow-up",color:AMBER}];
+const BOOKING_TYPE_COLOR = {"one-off":BLUE,"revisit":G,"quote":PURPLE,"extra":ORANGE,"followup":AMBER};
 
 const TODAY = new Date().toISOString().slice(0,10);
-
-const addDays = (dateStr, days) => {
-  if(!dateStr||!days) return "";
-  const d = new Date(dateStr+"T12:00:00");
-  d.setDate(d.getDate()+days);
-  return d.toISOString().slice(0,10);
-};
-const daysBetween = (a,b) => {
-  if(!a||!b) return null;
-  return Math.round((new Date(b+"T12:00:00")-new Date(a+"T12:00:00"))/86400000);
-};
-const fmtDate = (d) => {
-  if(!d) return "—";
-  return new Date(d+"T12:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});
-};
+const addDays = (d,days) => { if(!d||!days) return ""; const dt=new Date(d+"T12:00:00"); dt.setDate(dt.getDate()+days); return dt.toISOString().slice(0,10); };
+const daysBetween = (a,b) => { if(!a||!b) return null; return Math.round((new Date(b+"T12:00:00")-new Date(a+"T12:00:00"))/86400000); };
+const fmtDate = (d) => { if(!d) return "—"; return new Date(d+"T12:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"}); };
+const fmtDateShort = (d) => { if(!d) return "—"; return new Date(d+"T12:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"short"}); };
 const fmtPrice = (p) => p==null?"TBC":`£${p}`;
-const makeId = () => `v_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
-const thisWeekStart = () => {
-  const d=new Date(TODAY+"T12:00:00");
-  const day=d.getDay();
-  d.setDate(d.getDate()-(day===0?6:day-1));
-  return d.toISOString().slice(0,10);
-};
+const makeId = () => `id_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
+const thisWeekStart = () => { const d=new Date(TODAY+"T12:00:00"); const day=d.getDay(); d.setDate(d.getDate()-(day===0?6:day-1)); return d.toISOString().slice(0,10); };
 const thisMonthStart = () => TODAY.slice(0,7)+"-01";
+const getDayName = (d) => new Date(d+"T12:00:00").toLocaleDateString("en-GB",{weekday:"short"});
+const getWeekDates = (offset=0) => {
+  const base = new Date(TODAY+"T12:00:00");
+  const day = base.getDay();
+  const monday = new Date(base);
+  monday.setDate(base.getDate()-(day===0?6:day-1)+offset*7);
+  return Array.from({length:7},(_,i)=>{ const d=new Date(monday); d.setDate(monday.getDate()+i); return d.toISOString().slice(0,10); });
+};
 
 const calcSchedule = (c) => {
-  const days = FREQ_CONFIG[c.frequency]?.days || 14;
-  const nextVisit = c.lastVisit ? addDays(c.lastVisit, days) : "";
-  const daysSinceVisit = c.lastVisit ? daysBetween(c.lastVisit, TODAY) : null;
-  const daysUntilDue = nextVisit ? daysBetween(TODAY, nextVisit) : null;
-  const overdueDays = daysUntilDue!==null&&daysUntilDue<0 ? Math.abs(daysUntilDue) : 0;
+  const days=FREQ_CONFIG[c.frequency]?.days||14;
+  const nextVisit=c.lastVisit?addDays(c.lastVisit,days):"";
+  const daysSinceVisit=c.lastVisit?daysBetween(c.lastVisit,TODAY):null;
+  const daysUntilDue=nextVisit?daysBetween(TODAY,nextVisit):null;
+  const overdueDays=daysUntilDue!==null&&daysUntilDue<0?Math.abs(daysUntilDue):0;
   let visitStatus;
   if(c.isPaused) visitStatus="paused";
   else if(c.confirmationStatus==="pending") visitStatus="pending-confirmation";
@@ -123,98 +120,69 @@ const calcSchedule = (c) => {
   else if(daysUntilDue===0) visitStatus="due-today";
   else if(daysUntilDue<=7) visitStatus="due-soon";
   else visitStatus="not-due";
-  return {...c, nextVisit, daysSinceVisit, daysUntilDue, overdueDays, visitStatus};
+  return {...c,nextVisit,daysSinceVisit,daysUntilDue,overdueDays,visitStatus};
 };
 
-const URGENCY = ["overdue","due-today","due-soon","pending-confirmation","not-due","no-date","one-off","paused"];
-const sortByUrgency = (list) => [...list].sort((a,b) => {
-  const ai=URGENCY.indexOf(a.visitStatus), bi=URGENCY.indexOf(b.visitStatus);
-  if(ai!==bi) return ai-bi;
-  if(a.visitStatus==="overdue") return b.overdueDays-a.overdueDays;
-  return 0;
-});
+const URGENCY=["overdue","due-today","due-soon","pending-confirmation","not-due","no-date","one-off","paused"];
+const sortByUrgency=(list)=>[...list].sort((a,b)=>{ const ai=URGENCY.indexOf(a.visitStatus),bi=URGENCY.indexOf(b.visitStatus); if(ai!==bi) return ai-bi; if(a.visitStatus==="overdue") return b.overdueDays-a.overdueDays; return 0; });
 
 const STATUS_CFG = {
-  "overdue":              {color:RED,      bg:"#fee2e2",icon:"🔴",label:"Overdue"},
-  "due-today":            {color:ORANGE,   bg:"#fff7ed",icon:"🟠",label:"Due Today"},
-  "due-soon":             {color:AMBER,    bg:"#fffbeb",icon:"🟡",label:"Due Soon"},
-  "not-due":              {color:G,        bg:"#f0fdf4",icon:"🟢",label:"Not Due Yet"},
-  "pending-confirmation": {color:"#6366f1",bg:"#eef2ff",icon:"⏳",label:"Needs Confirmation"},
-  "paused":               {color:"#94a3b8",bg:"#f8fafc",icon:"⏸", label:"Paused"},
-  "no-date":              {color:"#94a3b8",bg:"#f8fafc",icon:"📅",label:"No Date Set"},
-  "one-off":              {color:BLUE,     bg:"#eff6ff",icon:"1️⃣",label:"One-off"},
+  "overdue":{color:RED,bg:"#fee2e2",icon:"🔴",label:"Overdue"},
+  "due-today":{color:ORANGE,bg:"#fff7ed",icon:"🟠",label:"Due Today"},
+  "due-soon":{color:AMBER,bg:"#fffbeb",icon:"🟡",label:"Due Soon"},
+  "not-due":{color:G,bg:"#f0fdf4",icon:"🟢",label:"Not Due Yet"},
+  "pending-confirmation":{color:"#6366f1",bg:"#eef2ff",icon:"⏳",label:"Needs Confirmation"},
+  "paused":{color:"#94a3b8",bg:"#f8fafc",icon:"⏸",label:"Paused"},
+  "no-date":{color:"#94a3b8",bg:"#f8fafc",icon:"📅",label:"No Date Set"},
+  "one-off":{color:BLUE,bg:"#eff6ff",icon:"1️⃣",label:"One-off"},
 };
 const PAY_CFG = {
-  unpaid:      {color:RED,       bg:"#fee2e2",label:"Unpaid"},
-  paid:        {color:"#16a34a", bg:"#dcfce7",label:"Paid"},
-  "part-paid": {color:AMBER,     bg:"#fef9c3",label:"Part Paid"},
-  waived:      {color:"#94a3b8", bg:"#f1f5f9",label:"Waived"},
+  unpaid:{color:RED,bg:"#fee2e2",label:"Unpaid"},
+  paid:{color:"#16a34a",bg:"#dcfce7",label:"Paid"},
+  "part-paid":{color:AMBER,bg:"#fef9c3",label:"Part Paid"},
+  waived:{color:"#94a3b8",bg:"#f1f5f9",label:"Waived"},
 };
 
 const st = {
-  app:       {fontFamily:"-apple-system,BlinkMacSystemFont,system-ui,sans-serif",background:"#f8fafc",minHeight:"100vh",paddingBottom:84},
-  topbar:    {background:"#fff",borderBottom:"1px solid #e8ecf0",padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100},
-  content:   {padding:"16px",maxWidth:600,margin:"0 auto"},
-  bottomnav: {position:"fixed",bottom:0,left:0,right:0,background:"rgba(255,255,255,0.97)",borderTop:"1px solid #e8ecf0",display:"flex",justifyContent:"space-around",padding:"8px 0 20px",zIndex:100},
-  navbtn:    {background:"none",border:"none",display:"flex",flexDirection:"column",alignItems:"center",gap:2,fontSize:10,fontWeight:600,cursor:"pointer",padding:"4px 16px"},
-  card:      {background:"#fff",borderRadius:16,border:"1px solid #e8ecf0",padding:"16px",marginBottom:10},
-  badge:     (color,bg)=>({display:"inline-flex",alignItems:"center",gap:3,background:bg,color:color,borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}),
-  btn:       (bg,color,full)=>({background:bg,color:color,border:"none",borderRadius:12,padding:"11px 18px",fontWeight:600,fontSize:14,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:6,width:full?"100%":"auto"}),
-  btnSm:     (bg,color)=>({background:bg,color:color,border:"none",borderRadius:9,padding:"7px 13px",fontWeight:600,fontSize:12,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:4}),
-  input:     {background:"#f4f6f8",border:"1.5px solid transparent",borderRadius:11,padding:"11px 13px",fontSize:15,width:"100%",outline:"none",boxSizing:"border-box",fontFamily:"inherit"},
-  label:     {fontSize:12,fontWeight:700,color:"#64748b",display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:0.4},
-  row:       {display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid #f1f5f9"},
-  secTitle:  {fontSize:12,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:0.8,marginBottom:12},
+  app:{fontFamily:"-apple-system,BlinkMacSystemFont,system-ui,sans-serif",background:"#f8fafc",minHeight:"100vh",paddingBottom:84},
+  topbar:{background:"#fff",borderBottom:"1px solid #e8ecf0",padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100},
+  content:{padding:"16px",maxWidth:600,margin:"0 auto"},
+  bottomnav:{position:"fixed",bottom:0,left:0,right:0,background:"rgba(255,255,255,0.97)",borderTop:"1px solid #e8ecf0",display:"flex",justifyContent:"space-around",padding:"8px 0 20px",zIndex:100},
+  navbtn:{background:"none",border:"none",display:"flex",flexDirection:"column",alignItems:"center",gap:2,fontSize:10,fontWeight:600,cursor:"pointer",padding:"4px 10px"},
+  card:{background:"#fff",borderRadius:16,border:"1px solid #e8ecf0",padding:"16px",marginBottom:10},
+  badge:(color,bg)=>({display:"inline-flex",alignItems:"center",gap:3,background:bg,color:color,borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}),
+  btn:(bg,color,full)=>({background:bg,color:color,border:"none",borderRadius:12,padding:"11px 18px",fontWeight:600,fontSize:14,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:6,width:full?"100%":"auto"}),
+  btnSm:(bg,color)=>({background:bg,color:color,border:"none",borderRadius:9,padding:"7px 13px",fontWeight:600,fontSize:12,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:4}),
+  input:{background:"#f4f6f8",border:"1.5px solid transparent",borderRadius:11,padding:"11px 13px",fontSize:15,width:"100%",outline:"none",boxSizing:"border-box",fontFamily:"inherit"},
+  label:{fontSize:12,fontWeight:700,color:"#64748b",display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:0.4},
+  row:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid #f1f5f9"},
+  secTitle:{fontSize:12,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:0.8,marginBottom:12},
 };
 
-const StatusBadge = ({status}) => {
-  const c = STATUS_CFG[status]||STATUS_CFG["no-date"];
-  return <span style={st.badge(c.color,c.bg)}>{c.icon} {c.label}</span>;
-};
-const PayBadge = ({status}) => {
-  const c = PAY_CFG[status]||PAY_CFG.unpaid;
-  return <span style={st.badge(c.color,c.bg)}>{c.label}</span>;
-};
+const StatusBadge=({status})=>{ const c=STATUS_CFG[status]||STATUS_CFG["no-date"]; return <span style={st.badge(c.color,c.bg)}>{c.icon} {c.label}</span>; };
+const PayBadge=({status})=>{ const c=PAY_CFG[status]||PAY_CFG.unpaid; return <span style={st.badge(c.color,c.bg)}>{c.label}</span>; };
 
-// ── STABLE INPUT COMPONENTS (defined outside App to prevent remounting) ───────
-const TextInput = ({label, value, onChange, type="text", placeholder}) => (
+const TextInput=({label,value,onChange,type="text",placeholder})=>(
   <div style={{marginBottom:14}}>
     <label style={st.label}>{label}</label>
-    <input
-      type={type}
-      style={st.input}
-      value={value||""}
-      onChange={e=>onChange(e.target.value)}
-      placeholder={placeholder||label}
-    />
+    <input type={type} style={st.input} value={value||""} onChange={e=>onChange(e.target.value)} placeholder={placeholder||label}/>
   </div>
 );
-
-const TextArea = ({label, value, onChange, placeholder}) => (
+const TextArea=({label,value,onChange,placeholder})=>(
   <div style={{marginBottom:14}}>
     <label style={st.label}>{label}</label>
-    <textarea
-      style={{...st.input,resize:"vertical",minHeight:70}}
-      value={value||""}
-      onChange={e=>onChange(e.target.value)}
-      placeholder={placeholder||label}
-    />
+    <textarea style={{...st.input,resize:"vertical",minHeight:70}} value={value||""} onChange={e=>onChange(e.target.value)} placeholder={placeholder||label}/>
   </div>
 );
-
-const SelectInput = ({label, value, onChange, options}) => (
+const SelectInput=({label,value,onChange,options})=>(
   <div style={{marginBottom:14}}>
     <label style={st.label}>{label}</label>
     <select style={st.input} value={value||""} onChange={e=>onChange(e.target.value)}>
-      {options.map(o=>typeof o==="string"
-        ? <option key={o} value={o}>{o}</option>
-        : <option key={o.value} value={o.value}>{o.label}</option>
-      )}
+      {options.map(o=>typeof o==="string"?<option key={o} value={o}>{o}</option>:<option key={o.value} value={o.value}>{o.label}</option>)}
     </select>
   </div>
 );
-
-const CheckboxInput = ({label, value, onChange}) => (
+const CheckboxInput=({label,value,onChange})=>(
   <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,cursor:"pointer"}} onClick={()=>onChange(!value)}>
     <div style={{width:22,height:22,borderRadius:7,border:`2px solid ${value?G:"#cbd5e1"}`,background:value?G:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
       {value&&<span style={{color:"#fff",fontSize:13}}>✓</span>}
@@ -223,22 +191,16 @@ const CheckboxInput = ({label, value, onChange}) => (
   </div>
 );
 
-// ── CLIENT FORM (stable component outside App) ────────────────────────────────
-const ClientForm = ({initialData, onSave, onCancel, title}) => {
-  const [form, setForm] = useState(()=>({...initialData, price:initialData.price!=null?String(initialData.price):""}));
-  const set = useCallback((field) => (val) => setForm(prev=>({...prev,[field]:val})), []);
-
-  const handleSave = () => {
-    onSave({...form, price:form.price?parseFloat(form.price):null});
-  };
-
+const ClientForm=({initialData,onSave,onCancel,title})=>{
+  const [form,setForm]=useState(()=>({...initialData,price:initialData.price!=null?String(initialData.price):""}));
+  const set=useCallback((field)=>(val)=>setForm(prev=>({...prev,[field]:val})),[]);
+  const handleSave=()=>onSave({...form,price:form.price?parseFloat(form.price):null});
   return (
     <div>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
         <button style={st.btnSm("#f1f5f9","#0f172a")} onClick={onCancel}>← Back</button>
         <div style={{fontSize:20,fontWeight:800}}>{title}</div>
       </div>
-
       <div style={st.card}>
         <div style={st.secTitle}>Contact</div>
         <TextInput label="Full Name *" value={form.name} onChange={set("name")}/>
@@ -248,52 +210,113 @@ const ClientForm = ({initialData, onSave, onCancel, title}) => {
         <TextInput label="Email" value={form.email} onChange={set("email")} type="email"/>
         <SelectInput label="Preferred Contact Method" value={form.preferredContact} onChange={set("preferredContact")} options={CONTACT_METHODS}/>
       </div>
-
       <div style={st.card}>
         <div style={st.secTitle}>Scheduling</div>
         <TextInput label="Last Visit Date" value={form.lastVisit} onChange={set("lastVisit")} type="date"/>
         <SelectInput label="Frequency" value={form.frequency} onChange={set("frequency")} options={FREQUENCIES}/>
-        <div style={{background:"#f0fdf4",borderRadius:10,padding:"10px 12px",fontSize:12,color:G,fontWeight:600,marginBottom:14}}>
-          📅 Next visit auto-calculates from last visit + frequency
-        </div>
+        <div style={{background:"#f0fdf4",borderRadius:10,padding:"10px 12px",fontSize:12,color:G,fontWeight:600,marginBottom:14}}>📅 Next visit auto-calculates from last visit + frequency</div>
         <SelectInput label="Confirmation Status" value={form.confirmationStatus} onChange={set("confirmationStatus")} options={[{value:"confirmed",label:"Confirmed"},{value:"pending",label:"Pending"}]}/>
       </div>
-
       <div style={st.card}>
         <div style={st.secTitle}>Job & Payment</div>
         <SelectInput label="Job Type" value={form.jobType} onChange={set("jobType")} options={JOB_TYPES}/>
         <TextInput label="Price per Visit (£)" value={form.price} onChange={set("price")} type="number"/>
         <TextInput label="Duration (mins)" value={String(form.duration||"")} onChange={set("duration")} type="number"/>
         <SelectInput label="Source" value={form.source} onChange={set("source")} options={[{value:"MG",label:"Moegardens"},{value:"CCG",label:"Chris Cavens"}]}/>
-        <SelectInput label="Payment Status" value={form.paymentStatus} onChange={set("paymentStatus")} options={[{value:"unpaid",label:"Unpaid"},{value:"paid",label:"Paid"},{value:"part-paid",label:"Part Paid"}]}/>
         <CheckboxInput label="Chris 30% cut applies" value={form.chrisCut} onChange={set("chrisCut")}/>
       </div>
-
       <div style={st.card}>
         <div style={st.secTitle}>Notes</div>
         <TextArea label="General Notes" value={form.notes} onChange={set("notes")}/>
         <TextArea label="Access Instructions" value={form.accessNotes} onChange={set("accessNotes")}/>
       </div>
+      <button style={{...st.btn(G,"#fff",true),padding:"14px",fontSize:15,borderRadius:14,marginBottom:16}} onClick={handleSave}>Save Client</button>
+    </div>
+  );
+};
+
+const BookingForm=({initialData,clients,onSave,onCancel,title})=>{
+  const [form,setForm]=useState(()=>({
+    id:initialData?.id||makeId(), clientId:initialData?.clientId||"",
+    clientName:initialData?.clientName||"", bookingType:initialData?.bookingType||"one-off",
+    jobType:initialData?.jobType||"Garden Maintenance", date:initialData?.date||TODAY,
+    time:initialData?.time||"", price:initialData?.price!=null?String(initialData.price):"",
+    notes:initialData?.notes||"", status:initialData?.status||"scheduled",
+    paymentStatus:initialData?.paymentStatus||"unpaid", affectsSchedule:initialData?.affectsSchedule||false,
+    isNewClient:initialData?.isNewClient||false, newClientName:initialData?.newClientName||"",
+  }));
+  const set=useCallback((field)=>(val)=>setForm(prev=>({...prev,[field]:val})),[]);
+
+  const selectedClient=clients.find(c=>c.id===form.clientId);
+  const handleClientChange=(id)=>{
+    const c=clients.find(x=>x.id===id);
+    setForm(prev=>({...prev,clientId:id,clientName:c?.name||"",price:c?.price!=null?String(c.price):prev.price,jobType:c?.jobType||prev.jobType}));
+  };
+
+  const handleSave=()=>{
+    const name=form.isNewClient?form.newClientName:form.clientName;
+    if(!name.trim()&&!form.clientId){alert("Please select or enter a client name");return;}
+    onSave({...form,clientName:name,price:form.price?parseFloat(form.price):null});
+  };
+
+  return (
+    <div>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
+        <button style={st.btnSm("#f1f5f9","#0f172a")} onClick={onCancel}>← Back</button>
+        <div style={{fontSize:20,fontWeight:800}}>{title||"New Booking"}</div>
+      </div>
+
+      <div style={st.card}>
+        <div style={st.secTitle}>Booking Type</div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:4}}>
+          {BOOKING_TYPES.map(t=>(
+            <button key={t.value} onClick={()=>set("bookingType")(t.value)} style={{...st.btnSm(form.bookingType===t.value?t.color:"#f1f5f9",form.bookingType===t.value?"#fff":"#64748b")}}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={st.card}>
+        <div style={st.secTitle}>Client</div>
+        <CheckboxInput label="New / one-off customer" value={form.isNewClient} onChange={set("isNewClient")}/>
+        {form.isNewClient?(
+          <TextInput label="Customer Name" value={form.newClientName} onChange={set("newClientName")}/>
+        ):(
+          <SelectInput label="Select Client" value={form.clientId} onChange={handleClientChange} options={[{value:"",label:"— Choose client —"},...clients.map(c=>({value:c.id,label:`${c.name}${c.area?" — "+c.area:""}`}))]}/>
+        )}
+        {selectedClient&&<div style={{fontSize:12,color:"#94a3b8",marginTop:-8,marginBottom:8}}>📍 {selectedClient.area||"—"} · {selectedClient.phone||"No phone"}</div>}
+      </div>
+
+      <div style={st.card}>
+        <div style={st.secTitle}>Date & Time</div>
+        <TextInput label="Date *" value={form.date} onChange={set("date")} type="date"/>
+        <TextInput label="Time (optional)" value={form.time} onChange={set("time")} type="time"/>
+      </div>
+
+      <div style={st.card}>
+        <div style={st.secTitle}>Job Details</div>
+        <SelectInput label="Job Type" value={form.jobType} onChange={set("jobType")} options={JOB_TYPES}/>
+        <TextInput label="Price (£)" value={form.price} onChange={set("price")} type="number"/>
+        <TextArea label="Notes / Instructions" value={form.notes} onChange={set("notes")}/>
+      </div>
+
+      <div style={st.card}>
+        <div style={st.secTitle}>Options</div>
+        <CheckboxInput label="Update client's last visit when completed" value={form.affectsSchedule} onChange={set("affectsSchedule")}/>
+        <SelectInput label="Payment Status" value={form.paymentStatus} onChange={set("paymentStatus")} options={[{value:"unpaid",label:"Unpaid"},{value:"paid",label:"Paid"},{value:"part-paid",label:"Part Paid"}]}/>
+      </div>
 
       <button style={{...st.btn(G,"#fff",true),padding:"14px",fontSize:15,borderRadius:14,marginBottom:16}} onClick={handleSave}>
-        Save Client
+        Save Booking
       </button>
     </div>
   );
 };
 
-const LockScreen = ({onUnlock}) => {
-  const [pin,setPin]=useState("");
-  const [error,setError]=useState(false);
-  const [shake,setShake]=useState(false);
-  const handleKey=(k)=>{
-    if(k==="del"){setPin(p=>p.slice(0,-1));setError(false);return;}
-    const next=pin+k; setPin(next);
-    if(next.length===4){
-      if(next===PIN){onUnlock();}
-      else{setError(true);setShake(true);setTimeout(()=>{setPin("");setError(false);setShake(false);},700);}
-    }
-  };
+const LockScreen=({onUnlock})=>{
+  const [pin,setPin]=useState(""); const [error,setError]=useState(false); const [shake,setShake]=useState(false);
+  const handleKey=(k)=>{ if(k==="del"){setPin(p=>p.slice(0,-1));setError(false);return;} const next=pin+k;setPin(next); if(next.length===4){if(next===PIN){onUnlock();}else{setError(true);setShake(true);setTimeout(()=>{setPin("");setError(false);setShake(false);},700);}} };
   return (
     <div style={{minHeight:"100vh",background:"#0a1a0f",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:32}}>
       <div style={{fontSize:48,marginBottom:8}}>🌿</div>
@@ -303,11 +326,8 @@ const LockScreen = ({onUnlock}) => {
         {[0,1,2,3].map(i=><div key={i} style={{width:16,height:16,borderRadius:"50%",background:pin.length>i?(error?RED:G):"#1e3a28",transition:"background .15s"}}/>)}
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,width:260}}>
-        {["1","2","3","4","5","6","7","8","9","","0","del"].map((k,i)=>
-          k===""?<div key={i}/>:
-          <button key={i} onClick={()=>handleKey(k)} style={{background:"#122318",color:"#fff",border:"1px solid #1e3a28",borderRadius:16,padding:"20px 0",fontSize:k==="del"?18:24,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-            {k==="del"?"⌫":k}
-          </button>
+        {["1","2","3","4","5","6","7","8","9","","0","del"].map((k,i)=>k===""?<div key={i}/>:
+          <button key={i} onClick={()=>handleKey(k)} style={{background:"#122318",color:"#fff",border:"1px solid #1e3a28",borderRadius:16,padding:"20px 0",fontSize:k==="del"?18:24,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{k==="del"?"⌫":k}</button>
         )}
       </div>
       {error&&<div style={{color:RED,marginTop:24,fontWeight:700,fontSize:13}}>Incorrect PIN</div>}
@@ -316,7 +336,7 @@ const LockScreen = ({onUnlock}) => {
   );
 };
 
-const DEFAULT_CLIENTS = [
+const DEFAULT_CLIENTS=[
   {id:"CCG001",source:"CCG",name:"Louise Bridget",address:"Balerno Rugby Club",phone:"",email:"",area:"Balerno",jobType:"Grounds Maintenance",price:50,frequency:"Monthly",lastVisit:"2026-05-01",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:120,chrisCut:true,active:true,visitHistory:["2026-05-01"],tags:[],preferredContact:"phone"},
   {id:"CCG002",source:"CCG",name:"Daniel Sloss",address:"",phone:"",email:"",area:"",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"Price TBC",accessNotes:"",duration:60,chrisCut:true,active:true,visitHistory:[],tags:[],preferredContact:"phone"},
   {id:"CCG003",source:"CCG",name:"Bravelaw Estate",address:"",phone:"+1 (713) 256-3101",email:"",area:"Edinburgh",jobType:"Grounds Maintenance",price:300,frequency:"Monthly",lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:480,chrisCut:true,active:true,visitHistory:[],tags:[],preferredContact:"phone"},
@@ -346,18 +366,13 @@ const DEFAULT_CLIENTS = [
   {id:"MG008",source:"MG",name:"Kirsty Campbell",address:"3 Lilybank Lane, Ratho Station, EH28 8AW",phone:"",email:"",area:"Ratho Station",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"2026-05-15",confirmationStatus:"pending",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:false,active:true,visitHistory:["2026-05-15"],tags:[],preferredContact:"phone"},
   {id:"MG009",source:"MG",name:"poorimitlaprakash",address:"20 Lilybank Road, Ratho Station, EH28",phone:"+44 7448 950184",email:"",area:"Ratho Station",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"2026-05-15",confirmationStatus:"pending",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:false,active:true,visitHistory:["2026-05-15"],tags:[],preferredContact:"whatsapp"},
 ];
-const blankClient = (count) => ({
-  id:`MG${String(count+1).padStart(3,"0")}`, source:"MG", name:"", address:"",
-  phone:"", email:"", area:"", jobType:"Garden Maintenance", price:"",
-  frequency:DEFAULT_FREQ, lastVisit:"", confirmationStatus:"confirmed",
-  isPaused:false, notes:"", accessNotes:"", duration:60, chrisCut:false,
-  active:true, visitHistory:[], tags:[], preferredContact:"phone",
-});
+const blankClient=(count)=>({id:`MG${String(count+1).padStart(3,"0")}`,source:"MG",name:"",address:"",phone:"",email:"",area:"",jobType:"Garden Maintenance",price:"",frequency:DEFAULT_FREQ,lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:false,active:true,visitHistory:[],tags:[],preferredContact:"phone"});
 
 export default function App() {
   const [unlocked,setUnlocked]=useState(false);
   const [rawClients,setRawClients]=useState([]);
   const [visits,setVisits]=useState([]);
+  const [bookings,setBookings]=useState([]);
   const [loading,setLoading]=useState(true);
   const [page,setPage]=useState("dashboard");
   const [search,setSearch]=useState("");
@@ -368,10 +383,15 @@ export default function App() {
   const [selected,setSelected]=useState(null);
   const [editingClient,setEditingClient]=useState(null);
   const [addingClient,setAddingClient]=useState(false);
+  const [addingBooking,setAddingBooking]=useState(false);
+  const [editingBooking,setEditingBooking]=useState(null);
+  const [selectedBooking,setSelectedBooking]=useState(null);
   const [toast,setToast]=useState(null);
   const [confirmDelete,setConfirmDelete]=useState(null);
   const [showFilters,setShowFilters]=useState(false);
   const [payModal,setPayModal]=useState(null);
+  const [calView,setCalView]=useState("week");
+  const [calOffset,setCalOffset]=useState(0);
 
   const clients=useMemo(()=>rawClients.filter(c=>c.active!==false).map(calcSchedule),[rawClients]);
   const showToast=(msg,type="success")=>{setToast({msg,type});setTimeout(()=>setToast(null),2500);};
@@ -387,37 +407,31 @@ export default function App() {
   const paidVisits=visits.filter(v=>v.paymentStatus==="paid");
   const weekPaid=paidVisits.filter(v=>v.paymentDate>=weekStart);
   const monthPaid=paidVisits.filter(v=>v.paymentDate>=monthStart);
-  const weekUnpaid=unpaidVisits.filter(v=>v.visitDate>=weekStart);
   const totalUnpaid=unpaidVisits.reduce((s,v)=>s+(v.price||0),0);
   const totalPaidWeek=weekPaid.reduce((s,v)=>s+(v.price||0),0);
   const totalPaidMonth=monthPaid.reduce((s,v)=>s+(v.price||0),0);
+
+  const todayBookings=bookings.filter(b=>b.date===TODAY&&b.status!=="cancelled");
+  const upcomingBookings=bookings.filter(b=>b.date>TODAY&&b.status==="scheduled").sort((a,b)=>a.date.localeCompare(b.date));
+  const unpaidBookings=bookings.filter(b=>b.status==="completed"&&b.paymentStatus==="unpaid");
 
   useEffect(()=>{
     if(!unlocked) return;
     const load=async()=>{
       setLoading(true);
       try {
-        const [dbClients,dbVisits]=await Promise.all([db.getClients(),db.getVisits()]);
-        if(dbClients&&dbClients.length>0){
-          setRawClients(dbClients.map(fromDb));
-        } else {
-          for(const c of DEFAULT_CLIENTS){ await db.saveClient(c); }
-          setRawClients(DEFAULT_CLIENTS);
-        }
+        const [dbClients,dbVisits,dbBookings]=await Promise.all([db.getClients(),db.getVisits(),db.getBookings()]);
+        if(dbClients&&dbClients.length>0){ setRawClients(dbClients.map(fromDb)); }
+        else { for(const c of DEFAULT_CLIENTS){ await db.saveClient(c); } setRawClients(DEFAULT_CLIENTS); }
         if(dbVisits&&dbVisits.length>0){ setVisits(dbVisits.map(visitFromDb)); }
-      } catch(e){
-        showToast("Connection error — working offline","error");
-        setRawClients(DEFAULT_CLIENTS);
-      }
+        if(dbBookings&&dbBookings.length>0){ setBookings(dbBookings.map(bookingFromDb)); }
+      } catch(e){ showToast("Connection error","error"); setRawClients(DEFAULT_CLIENTS); }
       setLoading(false);
     };
     load();
   },[unlocked]);
 
-  const updateClient=async(updated)=>{
-    setRawClients(prev=>prev.map(c=>c.id===updated.id?updated:c));
-    await db.saveClient(updated);
-  };
+  const updateClient=async(updated)=>{ setRawClients(prev=>prev.map(c=>c.id===updated.id?updated:c)); await db.saveClient(updated); };
 
   const markVisited=async(id)=>{
     const client=clients.find(c=>c.id===id);
@@ -441,38 +455,61 @@ export default function App() {
     showToast("💷 Payment confirmed!");
   };
 
-  const confirmClient=async(id)=>{
-    const c=rawClients.find(x=>x.id===id);
-    if(c){ await updateClient({...c,confirmationStatus:"confirmed"}); showToast("✅ Confirmed!"); }
+  const saveBooking=async(data)=>{
+    const toSave={...data,price:data.price?parseFloat(data.price):null};
+    if(editingBooking){
+      setBookings(prev=>prev.map(b=>b.id===toSave.id?toSave:b));
+      showToast("✅ Booking updated!");
+    } else {
+      setBookings(prev=>[...prev,toSave]);
+      showToast("✅ Booking added!");
+    }
+    await db.saveBooking(toSave);
+    setAddingBooking(false);
+    setEditingBooking(null);
   };
-  const pauseClient=async(id)=>{
-    const c=rawClients.find(x=>x.id===id);
-    if(c){ await updateClient({...c,isPaused:true}); setSelected(null); showToast("⏸ Paused"); }
+
+  const completeBooking=async(id)=>{
+    const booking=bookings.find(b=>b.id===id);
+    if(!booking) return;
+    const updated={...booking,status:"completed",completedAt:TODAY};
+    setBookings(prev=>prev.map(b=>b.id===id?updated:b));
+    await db.saveBooking(updated);
+    if(booking.affectsSchedule&&booking.clientId){
+      const client=rawClients.find(c=>c.id===booking.clientId);
+      if(client){ await updateClient({...client,lastVisit:TODAY,visitHistory:[...(client.visitHistory||[]),TODAY]}); }
+    }
+    const newVisit={id:makeId(),clientId:booking.clientId||"",clientName:booking.clientName,visitDate:TODAY,price:booking.price||null,paymentStatus:"unpaid",paymentMethod:null,paymentDate:null,notes:booking.notes||""};
+    setVisits(prev=>[...prev,newVisit]);
+    await db.saveVisit(newVisit);
+    setSelectedBooking(null);
+    showToast("✅ Job completed — payment pending");
   };
-  const archiveClient=async(id)=>{
-    const c=rawClients.find(x=>x.id===id);
-    if(c){ await updateClient({...c,active:false}); setSelected(null); showToast("Archived"); }
+
+  const cancelBooking=async(id)=>{
+    const updated={...bookings.find(b=>b.id===id),status:"cancelled"};
+    setBookings(prev=>prev.map(b=>b.id===id?updated:b));
+    await db.saveBooking(updated);
+    setSelectedBooking(null);
+    showToast("Booking cancelled");
   };
-  const deleteClient=async(id)=>{
-    setRawClients(prev=>prev.filter(c=>c.id!==id));
-    await db.deleteClient(id);
-    setSelected(null); setConfirmDelete(null);
-    showToast("Removed");
+
+  const payBooking=async(id,method)=>{
+    const updated={...bookings.find(b=>b.id===id),paymentStatus:"paid",paymentMethod:method,paymentDate:TODAY};
+    setBookings(prev=>prev.map(b=>b.id===id?updated:b));
+    await db.saveBooking(updated);
+    showToast("💷 Paid!");
   };
+
+  const confirmClient=async(id)=>{ const c=rawClients.find(x=>x.id===id); if(c){await updateClient({...c,confirmationStatus:"confirmed"});showToast("✅ Confirmed!");} };
+  const pauseClient=async(id)=>{ const c=rawClients.find(x=>x.id===id); if(c){await updateClient({...c,isPaused:true});setSelected(null);showToast("⏸ Paused");} };
+  const archiveClient=async(id)=>{ const c=rawClients.find(x=>x.id===id); if(c){await updateClient({...c,active:false});setSelected(null);showToast("Archived");} };
+  const deleteClient=async(id)=>{ setRawClients(prev=>prev.filter(c=>c.id!==id)); await db.deleteClient(id); setSelected(null); setConfirmDelete(null); showToast("Removed"); };
 
   const saveClient=async(data)=>{
     const toSave={...data,price:data.price?parseFloat(data.price):null};
-    if(addingClient){
-      setRawClients(prev=>[...prev,toSave]);
-      await db.saveClient(toSave);
-      setAddingClient(false);
-      showToast("✅ Client added!");
-    } else {
-      await updateClient(toSave);
-      setSelected(calcSchedule(toSave));
-      setEditingClient(null);
-      showToast("✅ Saved!");
-    }
+    if(addingClient){ setRawClients(prev=>[...prev,toSave]); await db.saveClient(toSave); setAddingClient(false); showToast("✅ Client added!"); }
+    else { await updateClient(toSave); setSelected(calcSchedule(toSave)); setEditingClient(null); showToast("✅ Saved!"); }
   };
 
   const getContactAction=(c)=>{
@@ -487,46 +524,195 @@ export default function App() {
   };
 
   if(!unlocked) return <LockScreen onUnlock={()=>setUnlocked(true)}/>;
+  if(loading) return <div style={{minHeight:"100vh",background:"#f8fafc",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}><div style={{fontSize:48}}>🌿</div><div style={{fontWeight:700,fontSize:16,color:G}}>Loading moegardens...</div><div style={{fontSize:13,color:"#94a3b8"}}>Connecting to database</div></div>;
+  if(addingClient) return <div style={st.app}><div style={st.content}><ClientForm key="add" initialData={blankClient(rawClients.length)} onSave={saveClient} onCancel={()=>setAddingClient(false)} title="New Client"/></div></div>;
+  if(editingClient) return <div style={st.app}><div style={st.content}><ClientForm key={`edit-${editingClient.id}`} initialData={editingClient} onSave={saveClient} onCancel={()=>setEditingClient(null)} title="Edit Client"/></div></div>;
+  if(addingBooking) return <div style={st.app}><div style={st.content}><BookingForm key="add-booking" initialData={null} clients={clients} onSave={saveBooking} onCancel={()=>setAddingBooking(false)}/></div></div>;
+  if(editingBooking) return <div style={st.app}><div style={st.content}><BookingForm key={`edit-booking-${editingBooking.id}`} initialData={editingBooking} clients={clients} onSave={saveBooking} onCancel={()=>setEditingBooking(null)} title="Edit Booking"/></div></div>;
 
-  if(loading) return (
-    <div style={{minHeight:"100vh",background:"#f8fafc",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
-      <div style={{fontSize:48}}>🌿</div>
-      <div style={{fontWeight:700,fontSize:16,color:G}}>Loading moegardens...</div>
-      <div style={{fontSize:13,color:"#94a3b8"}}>Connecting to database</div>
-    </div>
-  );
-
-  if(addingClient) return (
-    <div style={st.app}>
-      <div style={st.content}>
-        <ClientForm
-          key="add-client"
-          initialData={blankClient(rawClients.length)}
-          onSave={saveClient}
-          onCancel={()=>setAddingClient(false)}
-          title="New Client"
-        />
+  const BookingCard=({b,showActions=true})=>{
+    const typeColor=BOOKING_TYPE_COLOR[b.bookingType]||BLUE;
+    const isOverdue=b.date<TODAY&&b.status==="scheduled";
+    return (
+      <div style={{...st.card,marginBottom:8,borderLeft:`3px solid ${b.status==="completed"?"#94a3b8":isOverdue?RED:typeColor}`,opacity:b.status==="cancelled"?.5:1,cursor:"pointer"}} onClick={()=>setSelectedBooking(b)}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
+          <div style={{fontWeight:700,fontSize:14,flex:1,paddingRight:8}}>{b.clientName||"One-off Client"}</div>
+          <span style={st.badge(typeColor,`${typeColor}18`)}>{BOOKING_TYPES.find(t=>t.value===b.bookingType)?.label||b.bookingType}</span>
+        </div>
+        <div style={{fontSize:12,color:"#94a3b8",marginBottom:6}}>
+          {b.time?`${b.time} · `:""}{fmtDate(b.date)} · {b.jobType}
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          {b.status==="completed"&&<span style={st.badge("#94a3b8","#f1f5f9")}>✓ Done</span>}
+          {isOverdue&&b.status==="scheduled"&&<span style={st.badge(RED,"#fee2e2")}>Overdue</span>}
+          {b.status==="cancelled"&&<span style={st.badge("#94a3b8","#f1f5f9")}>Cancelled</span>}
+          <PayBadge status={b.paymentStatus}/>
+          <span style={{fontWeight:800,color:G,marginLeft:"auto"}}>{fmtPrice(b.price)}</span>
+        </div>
+        {b.notes&&<div style={{fontSize:11,color:"#94a3b8",marginTop:6,fontStyle:"italic"}}>"{b.notes.slice(0,60)}{b.notes.length>60?"...":""}"</div>}
       </div>
-    </div>
-  );
+    );
+  };
 
-  if(editingClient) return (
-    <div style={st.app}>
-      <div style={st.content}>
-        <ClientForm
-          key={`edit-${editingClient.id}`}
-          initialData={editingClient}
-          onSave={saveClient}
-          onCancel={()=>setEditingClient(null)}
-          title="Edit Client"
-        />
+  const BookingDetail=({b})=>{
+    const [payMethod,setPayMethod]=useState("Cash");
+    const typeColor=BOOKING_TYPE_COLOR[b.bookingType]||BLUE;
+    const client=clients.find(c=>c.id===b.clientId);
+    return (
+      <div>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+          <button style={st.btnSm("#f1f5f9","#0f172a")} onClick={()=>setSelectedBooking(null)}>← Back</button>
+          <button style={st.btnSm(G,"#fff")} onClick={()=>{setEditingBooking(b);setSelectedBooking(null);}}>✏️ Edit</button>
+          {b.status==="scheduled"&&<button style={st.btnSm("#fee2e2",RED)} onClick={()=>cancelBooking(b.id)}>Cancel</button>}
+        </div>
+        <div style={{...st.card,borderLeft:`4px solid ${typeColor}`,marginBottom:12}}>
+          <div style={{fontSize:22,fontWeight:800,marginBottom:8}}>{b.clientName||"One-off Job"}</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            <span style={st.badge(typeColor,`${typeColor}18`)}>{BOOKING_TYPES.find(t=>t.value===b.bookingType)?.label}</span>
+            <PayBadge status={b.paymentStatus}/>
+            {b.status==="completed"&&<span style={st.badge("#16a34a","#dcfce7")}>✓ Completed</span>}
+            {b.status==="cancelled"&&<span style={st.badge("#94a3b8","#f1f5f9")}>Cancelled</span>}
+          </div>
+        </div>
+        <div style={st.card}>
+          <div style={st.secTitle}>Details</div>
+          {[["Date",fmtDate(b.date)],["Time",b.time||"Not set"],["Job Type",b.jobType],["Price",fmtPrice(b.price)],["Affects Schedule",b.affectsSchedule?"Yes — updates client last visit":"No"]].map(([k,v])=>(
+            <div key={k} style={st.row}><span style={{fontSize:13,color:"#64748b",fontWeight:600}}>{k}</span><span style={{fontSize:13,fontWeight:700}}>{v}</span></div>
+          ))}
+        </div>
+        {b.notes&&<div style={st.card}><div style={st.secTitle}>Notes</div><div style={{fontSize:13,lineHeight:1.6}}>{b.notes}</div></div>}
+        {client&&(
+          <div style={{...st.card,cursor:"pointer"}} onClick={()=>{setSelected(client);setSelectedBooking(null);setPage("clients");}}>
+            <div style={st.secTitle}>Client</div>
+            <div style={{fontWeight:700}}>{client.name}</div>
+            <div style={{fontSize:12,color:"#94a3b8"}}>{client.area||"—"} · {client.phone||"No phone"}</div>
+          </div>
+        )}
+        {b.paymentStatus==="unpaid"&&b.status==="completed"&&(
+          <div style={st.card}>
+            <div style={st.secTitle}>Mark as Paid</div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+              {PAYMENT_METHODS.map(m=><button key={m} onClick={()=>setPayMethod(m)} style={st.btnSm(payMethod===m?G:"#f1f5f9",payMethod===m?"#fff":"#64748b")}>{m}</button>)}
+            </div>
+            <button style={{...st.btn(G,"#fff",true)}} onClick={()=>payBooking(b.id,payMethod)}>✅ Confirm Paid — {fmtPrice(b.price)}</button>
+          </div>
+        )}
+        <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:16}}>
+          {b.status==="scheduled"&&<button style={{...st.btn("#dcfce7","#16a34a"),borderRadius:12}} onClick={()=>completeBooking(b.id)}>✅ Mark Completed</button>}
+          {client&&<button style={{...st.btn("#f1f5f9","#0f172a"),borderRadius:12}} onClick={()=>{setSelected(client);setSelectedBooking(null);setPage("clients");}}>👤 View Client</button>}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
+
+  const Calendar=()=>{
+    const weekDates=getWeekDates(calOffset);
+    const getBookingsForDate=(d)=>bookings.filter(b=>b.date===d&&b.status!=="cancelled");
+    const totalForDate=(d)=>getBookingsForDate(d).reduce((s,b)=>s+(b.price||0),0);
+
+    const DayView=()=>{
+      const date=addDays(TODAY,calOffset);
+      const dayBookings=getBookingsForDate(date);
+      return (
+        <div>
+          <div style={{fontSize:16,fontWeight:800,marginBottom:16,color:"#0f172a"}}>{new Date(date+"T12:00:00").toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long"})}</div>
+          {dayBookings.length===0&&<div style={{textAlign:"center",padding:"40px 0",color:"#94a3b8"}}><div style={{fontSize:32,marginBottom:8}}>📅</div><div style={{fontWeight:600}}>No bookings</div><button style={{...st.btn(G,"#fff"),marginTop:12,borderRadius:12}} onClick={()=>setAddingBooking(true)}>+ Add Booking</button></div>}
+          {dayBookings.map(b=><BookingCard key={b.id} b={b}/>)}
+        </div>
+      );
+    };
+
+    const WeekView=()=>(
+      <div>
+        {weekDates.map(date=>{
+          const dayB=getBookingsForDate(date);
+          const isToday=date===TODAY;
+          const total=totalForDate(date);
+          return (
+            <div key={date} style={{marginBottom:14}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                <div style={{fontWeight:700,fontSize:13,color:isToday?G:"#0f172a"}}>
+                  {isToday?"📍 Today — ":""}{getDayName(date)} {fmtDateShort(date)}
+                </div>
+                {total>0&&<span style={{fontSize:12,fontWeight:700,color:G}}>£{total}</span>}
+              </div>
+              {dayB.length===0?(
+                <div style={{fontSize:12,color:"#cbd5e1",padding:"8px 0",borderBottom:`1px solid #f1f5f9`}}>No bookings</div>
+              ):(
+                dayB.map(b=><BookingCard key={b.id} b={b}/>)
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+
+    const ListView=()=>{
+      const upcoming=bookings.filter(b=>b.date>=TODAY&&b.status!=="cancelled").sort((a,b)=>a.date.localeCompare(b.date));
+      const past=bookings.filter(b=>b.date<TODAY&&b.status!=="cancelled").sort((a,b)=>b.date.localeCompare(a.date)).slice(0,10);
+      return (
+        <div>
+          {upcoming.length>0&&(
+            <div style={{marginBottom:16}}>
+              <div style={st.secTitle}>Upcoming ({upcoming.length})</div>
+              {upcoming.map(b=><BookingCard key={b.id} b={b}/>)}
+            </div>
+          )}
+          {past.length>0&&(
+            <div>
+              <div style={st.secTitle}>Recent Past</div>
+              {past.map(b=><BookingCard key={b.id} b={b}/>)}
+            </div>
+          )}
+          {upcoming.length===0&&past.length===0&&<div style={{textAlign:"center",padding:"60px 0",color:"#94a3b8"}}><div style={{fontSize:40,marginBottom:8}}>📅</div><div style={{fontWeight:600}}>No bookings yet</div></div>}
+        </div>
+      );
+    };
+
+    return (
+      <div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+          <div style={{display:"flex",gap:6}}>
+            {[["week","Week"],["day","Day"],["list","List"]].map(([v,l])=>(
+              <button key={v} onClick={()=>setCalView(v)} style={st.btnSm(calView===v?G:"#f1f5f9",calView===v?"#fff":"#64748b")}>{l}</button>
+            ))}
+          </div>
+          <button style={{...st.btn(G,"#fff"),borderRadius:12,padding:"8px 14px",fontSize:13}} onClick={()=>setAddingBooking(true)}>+ Book</button>
+        </div>
+
+        {calView!=="list"&&(
+          <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:14}}>
+            <button style={st.btnSm("#f1f5f9","#64748b")} onClick={()=>setCalOffset(o=>o-(calView==="week"?0:1)+( calView==="week"?-1:0))}
+              onClick={()=>setCalOffset(o=>calView==="week"?o-1:o-1)}>‹</button>
+            <button style={st.btnSm("#f1f5f9",G)} onClick={()=>setCalOffset(0)}>Today</button>
+            <button style={st.btnSm("#f1f5f9","#64748b")} onClick={()=>setCalOffset(o=>calView==="week"?o+1:o+1)}>›</button>
+            {calView==="week"&&<span style={{fontSize:12,color:"#94a3b8",marginLeft:4}}>{fmtDateShort(weekDates[0])} – {fmtDateShort(weekDates[6])}</span>}
+          </div>
+        )}
+
+        {calView==="week"&&<WeekView/>}
+        {calView==="day"&&<DayView/>}
+        {calView==="list"&&<ListView/>}
+
+        {unpaidBookings.length>0&&(
+          <div style={{...st.card,borderLeft:`3px solid ${RED}`,marginTop:8}}>
+            <div style={{fontSize:13,fontWeight:800,color:RED,marginBottom:8}}>💷 {unpaidBookings.length} completed but unpaid</div>
+            {unpaidBookings.slice(0,3).map(b=>(
+              <div key={b.id} style={{...st.row,cursor:"pointer"}} onClick={()=>setSelectedBooking(b)}>
+                <div><div style={{fontWeight:700,fontSize:13}}>{b.clientName}</div><div style={{fontSize:11,color:"#94a3b8"}}>{fmtDate(b.date)}</div></div>
+                <span style={{fontWeight:800,color:RED}}>{fmtPrice(b.price)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const Dashboard=()=>{
-    const topOverdue=[...overdue].sort((a,b)=>b.overdueDays-a.overdueDays).slice(0,4);
-    const recentUnpaid=[...unpaidVisits].sort((a,b)=>b.visitDate.localeCompare(a.visitDate)).slice(0,4);
+    const topOverdue=[...overdue].sort((a,b)=>b.overdueDays-a.overdueDays).slice(0,3);
+    const recentUnpaid=[...unpaidVisits].sort((a,b)=>b.visitDate.localeCompare(a.visitDate)).slice(0,3);
+    const nextBooking=upcomingBookings[0];
     return (
       <div>
         <div style={{marginBottom:16}}>
@@ -536,7 +722,7 @@ export default function App() {
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
           {[
             {label:"🔴 Overdue",val:overdue.length,color:RED,bg:"#fef2f2",fn:()=>{setFilterStatus("overdue");setPage("revisits");}},
-            {label:"🟠 Due Today",val:dueToday.length,color:ORANGE,bg:"#fff7ed",fn:()=>{setFilterStatus("due-today");setPage("revisits");}},
+            {label:"📅 Today",val:todayBookings.length,color:G,bg:"#f0fdf4",fn:()=>{setCalView("day");setCalOffset(0);setPage("calendar");}},
             {label:"💷 Unpaid",val:`£${totalUnpaid}`,color:RED,bg:"#fef2f2",fn:()=>setPage("payments")},
             {label:"⏳ Needs Confirm",val:needsConfirm.length,color:"#6366f1",bg:"#eef2ff",fn:()=>{setFilterStatus("pending-confirmation");setPage("revisits");}},
           ].map(({label,val,color,bg,fn})=>(
@@ -546,6 +732,16 @@ export default function App() {
             </div>
           ))}
         </div>
+
+        {nextBooking&&(
+          <div style={{...st.card,borderLeft:`3px solid ${G}`,marginBottom:12,cursor:"pointer"}} onClick={()=>{setSelectedBooking(nextBooking);setPage("calendar");}}>
+            <div style={{fontSize:12,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:.6,marginBottom:6}}>Next Booking</div>
+            <div style={{fontWeight:700,fontSize:16}}>{nextBooking.clientName}</div>
+            <div style={{fontSize:12,color:"#94a3b8"}}>{fmtDate(nextBooking.date)}{nextBooking.time?` · ${nextBooking.time}`:""} · {nextBooking.jobType}</div>
+            <div style={{fontWeight:800,color:G,marginTop:4}}>{fmtPrice(nextBooking.price)}</div>
+          </div>
+        )}
+
         <div style={{...st.card,marginBottom:12}}>
           <div style={st.secTitle}>💷 Revenue</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
@@ -557,6 +753,7 @@ export default function App() {
             ))}
           </div>
         </div>
+
         {recentUnpaid.length>0&&(
           <div style={{...st.card,borderLeft:`3px solid ${RED}`,marginBottom:12}}>
             <div style={{fontSize:14,fontWeight:800,color:RED,marginBottom:10}}>💷 Unpaid Visits</div>
@@ -571,26 +768,25 @@ export default function App() {
             ))}
           </div>
         )}
+
         {topOverdue.length>0&&(
           <div style={{...st.card,borderLeft:`3px solid ${RED}`,marginBottom:12}}>
             <div style={{fontSize:14,fontWeight:800,color:RED,marginBottom:10}}>🔴 Most Overdue</div>
             {topOverdue.map(c=>(
               <div key={c.id} style={{...st.row,cursor:"pointer"}} onClick={()=>{setSelected(c);setPage("clients");}}>
-                <div><div style={{fontWeight:700,fontSize:13}}>{c.name}</div><div style={{fontSize:11,color:"#94a3b8"}}>{c.area||"—"} · Last: {fmtDate(c.lastVisit)}</div></div>
-                <div style={{textAlign:"right"}}>
-                  <div style={{fontWeight:800,color:RED,fontSize:12}}>{c.overdueDays}d overdue</div>
-                  {c.phone&&<a href={`tel:${c.phone}`} onClick={e=>e.stopPropagation()} style={{fontSize:16}}>📞</a>}
-                </div>
+                <div><div style={{fontWeight:700,fontSize:13}}>{c.name}</div><div style={{fontSize:11,color:"#94a3b8"}}>{c.area||"—"} · {c.overdueDays}d overdue</div></div>
+                {c.phone&&<a href={`tel:${c.phone}`} onClick={e=>e.stopPropagation()} style={{fontSize:16}}>📞</a>}
               </div>
             ))}
           </div>
         )}
+
         <div style={st.card}>
           <div style={st.secTitle}>Quick Actions</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
             {[
-              {label:"➕ Add Client",bg:G,color:"#fff",fn:()=>setAddingClient(true)},
-              {label:"👥 All Clients",bg:"#f1f5f9",color:"#0f172a",fn:()=>setPage("clients")},
+              {label:"📅 Add Booking",bg:G,color:"#fff",fn:()=>setAddingBooking(true)},
+              {label:"➕ Add Client",bg:"#f1f5f9",color:"#0f172a",fn:()=>setAddingClient(true)},
               {label:"🔴 Revisits",bg:"#fef2f2",color:RED,fn:()=>setPage("revisits")},
               {label:"💷 Payments",bg:"#f0fdf4",color:G,fn:()=>setPage("payments")},
             ].map(({label,bg,color,fn})=>(
@@ -618,7 +814,6 @@ export default function App() {
           {c.visitStatus==="overdue"&&<span style={{fontSize:11,fontWeight:800,color:RED}}>{c.overdueDays}d overdue</span>}
           {clientUnpaid.length>0&&<span style={{...st.badge(RED,"#fee2e2"),fontSize:10}}>💷 {clientUnpaid.length} unpaid</span>}
           {contactAction&&<a href={contactAction.url} onClick={e=>e.stopPropagation()} style={{fontSize:11,color:G,fontWeight:700,textDecoration:"none",marginLeft:"auto"}}>{contactAction.label}</a>}
-          {!contactAction&&<span style={{fontWeight:800,color:G,marginLeft:"auto",fontSize:14}}>{fmtPrice(c.price)}</span>}
         </div>
       </div>
     );
@@ -701,25 +896,22 @@ export default function App() {
           <button style={st.btnSm("#f1f5f9","#0f172a")} onClick={()=>setSelected(null)}>← Back</button>
           <button style={st.btnSm(G,"#fff")} onClick={()=>setEditingClient(c)}>✏️ Edit</button>
           <button style={st.btnSm("#fff2f2",RED)} onClick={()=>setConfirmDelete(c.id)}>🗑</button>
-          <button style={st.btnSm("#f1f5f9","#64748b")} onClick={()=>pauseClient(c.id)}>⏸ Pause</button>
+          <button style={st.btnSm("#f1f5f9","#64748b")} onClick={()=>pauseClient(c.id)}>⏸</button>
           <button style={st.btnSm("#f1f5f9","#64748b")} onClick={()=>archiveClient(c.id)}>Archive</button>
+          <button style={st.btnSm(BLUE,"#fff")} onClick={()=>{setAddingBooking(true);setSelected(null);}}>📅 Book</button>
         </div>
         <div style={{...st.card,borderLeft:`4px solid ${cfg.color||G}`,marginBottom:12}}>
           <div style={{fontSize:22,fontWeight:800,marginBottom:8}}>{c.name}</div>
           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
             <StatusBadge status={c.visitStatus}/>
-            {c.visitStatus==="overdue"&&<span style={{...st.badge(RED,"#fee2e2")}}>{c.overdueDays}d overdue</span>}
+            {c.visitStatus==="overdue"&&<span style={st.badge(RED,"#fee2e2")}>{c.overdueDays}d overdue</span>}
           </div>
         </div>
-
         <div style={st.card}>
           <div style={st.secTitle}>Contact</div>
-          <div style={{...st.row}}><span style={{fontSize:13,color:"#64748b",fontWeight:600}}>Preferred Method</span><span style={{fontSize:13,fontWeight:700}}>{contactLabel}</span></div>
+          <div style={st.row}><span style={{fontSize:13,color:"#64748b",fontWeight:600}}>Preferred</span><span style={{fontSize:13,fontWeight:700}}>{contactLabel}</span></div>
           {[["Phone",c.phone||"—"],["Email",c.email||"—"],["Area",c.area||"—"],["Address",c.address||"—"]].map(([k,v])=>(
-            <div key={k} style={st.row}>
-              <span style={{fontSize:13,color:"#64748b",fontWeight:600}}>{k}</span>
-              <span style={{fontSize:13,fontWeight:600,maxWidth:200,textAlign:"right"}}>{v}</span>
-            </div>
+            <div key={k} style={st.row}><span style={{fontSize:13,color:"#64748b",fontWeight:600}}>{k}</span><span style={{fontSize:13,fontWeight:600,maxWidth:200,textAlign:"right"}}>{v}</span></div>
           ))}
           {contactAction&&(
             <div style={{marginTop:12,display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -729,16 +921,14 @@ export default function App() {
             </div>
           )}
         </div>
-
         <div style={st.card}>
           <div style={st.secTitle}>Schedule</div>
-          {[["Frequency",c.frequency||DEFAULT_FREQ],["Last Visit",fmtDate(c.lastVisit)],["Days Since",c.daysSinceVisit!=null?`${c.daysSinceVisit} days`:"—"],["Next Due",fmtDate(c.nextVisit)],["Days Away",c.visitStatus==="overdue"?`${c.overdueDays}d overdue`:c.daysUntilDue!=null?`${c.daysUntilDue}d`:"—"]].map(([k,v])=>(
+          {[["Frequency",c.frequency||DEFAULT_FREQ],["Last Visit",fmtDate(c.lastVisit)],["Days Since",c.daysSinceVisit!=null?`${c.daysSinceVisit} days`:"—"],["Next Due",fmtDate(c.nextVisit)],["Status",c.visitStatus==="overdue"?`${c.overdueDays}d overdue`:c.daysUntilDue!=null?`${c.daysUntilDue}d`:"—"]].map(([k,v])=>(
             <div key={k} style={st.row}><span style={{fontSize:13,color:"#64748b",fontWeight:600}}>{k}</span><span style={{fontSize:13,fontWeight:700}}>{v}</span></div>
           ))}
         </div>
-
         <div style={st.card}>
-          <div style={st.secTitle}>💷 Payment Summary</div>
+          <div style={st.secTitle}>💷 Payment</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
             {[{l:"Per Visit",v:fmtPrice(c.price),cl:"#0f172a"},{l:"Total Earned",v:`£${totalEarned}`,cl:G},{l:"Owes",v:totalOwed?`£${totalOwed}`:"—",cl:totalOwed?RED:"#94a3b8"}].map(({l,v,cl})=>(
               <div key={l} style={{textAlign:"center",background:"#f8fafc",borderRadius:10,padding:"10px 6px"}}>
@@ -754,7 +944,7 @@ export default function App() {
                 <div key={v.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid #fee2e2"}}>
                   <div style={{fontSize:12,fontWeight:600}}>{fmtDate(v.visitDate)}</div>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{fontWeight:700,color:RED,fontSize:13}}>{fmtPrice(v.price)}</span>
+                    <span style={{fontWeight:700,color:RED}}>{fmtPrice(v.price)}</span>
                     <button style={st.btnSm(G,"#fff")} onClick={()=>openPayModal(v)}>Pay</button>
                   </div>
                 </div>
@@ -762,15 +952,14 @@ export default function App() {
             </div>
           )}
         </div>
-
         {clientVisits.length>0&&(
           <div style={st.card}>
             <div style={st.secTitle}>Visit History ({clientVisits.length})</div>
-            {clientVisits.slice(0,8).map(v=>(
+            {clientVisits.slice(0,6).map(v=>(
               <div key={v.id} style={{...st.row,flexWrap:"wrap",gap:4}}>
                 <div><div style={{fontSize:13,fontWeight:600}}>📅 {fmtDate(v.visitDate)}</div><div style={{fontSize:11,color:"#94a3b8"}}>{v.paymentMethod||""}{v.paymentDate?` · paid ${fmtDate(v.paymentDate)}`:""}</div></div>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <span style={{fontWeight:700,fontSize:13}}>{fmtPrice(v.price)}</span>
+                  <span style={{fontWeight:700}}>{fmtPrice(v.price)}</span>
                   <PayBadge status={v.paymentStatus}/>
                   {v.paymentStatus==="unpaid"&&<button style={st.btnSm(G,"#fff")} onClick={()=>openPayModal(v)}>Pay</button>}
                 </div>
@@ -778,7 +967,6 @@ export default function App() {
             ))}
           </div>
         )}
-
         {(c.notes||c.accessNotes)&&(
           <div style={st.card}>
             <div style={st.secTitle}>Notes</div>
@@ -786,10 +974,9 @@ export default function App() {
             {c.accessNotes&&<div><div style={{fontSize:11,fontWeight:700,color:"#94a3b8",marginBottom:3}}>ACCESS</div><div style={{fontSize:13,lineHeight:1.5}}>{c.accessNotes}</div></div>}
           </div>
         )}
-
         <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:16}}>
           <button style={{...st.btn("#dcfce7","#16a34a"),borderRadius:12}} onClick={()=>markVisited(c.id)}>✅ Mark Visited Today</button>
-          {c.visitStatus==="pending-confirmation"&&<button style={{...st.btn(G,"#fff"),borderRadius:12}} onClick={()=>confirmClient(c.id)}>✓ Confirm Active</button>}
+          {c.visitStatus==="pending-confirmation"&&<button style={{...st.btn(G,"#fff"),borderRadius:12}} onClick={()=>confirmClient(c.id)}>✓ Confirm</button>}
         </div>
       </div>
     );
@@ -828,7 +1015,7 @@ export default function App() {
                   </div>
                 ))}
               </div>
-              {clientUnpaidCount>0&&<div style={{fontSize:11,color:RED,fontWeight:700,marginBottom:8}}>💷 {clientUnpaidCount} unpaid visit{clientUnpaidCount>1?"s":""}</div>}
+              {clientUnpaidCount>0&&<div style={{fontSize:11,color:RED,fontWeight:700,marginBottom:8}}>💷 {clientUnpaidCount} unpaid</div>}
               <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                 {contactAction&&<a href={contactAction.url} style={{...st.btnSm(G,"#fff"),textDecoration:"none"}}>{contactAction.label}</a>}
                 <button style={st.btnSm("#dcfce7","#16a34a")} onClick={()=>markVisited(c.id)}>✅ Visited Today</button>
@@ -856,6 +1043,8 @@ export default function App() {
       const count=unpaidVisits.filter(v=>v.clientId===id).length;
       return {id,name:c?.name||"Unknown",area:c?.area||"",owed,count};
     }).sort((a,b)=>b.owed-a.owed);
+    const weekUnpaid=unpaidVisits.filter(v=>v.visitDate>=weekStart);
+    const totalPaidMonthAmt=monthPaid.reduce((s,v)=>s+(v.price||0),0);
     return (
       <div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
@@ -866,7 +1055,7 @@ export default function App() {
           </div>
           <div style={{...st.card,borderLeft:`4px solid ${G}`,marginBottom:0}}>
             <div style={{fontSize:11,fontWeight:700,color:G,textTransform:"uppercase",marginBottom:4}}>This Month</div>
-            <div style={{fontSize:28,fontWeight:800,color:G}}>£{totalPaidMonth}</div>
+            <div style={{fontSize:28,fontWeight:800,color:G}}>£{totalPaidMonthAmt}</div>
             <div style={{fontSize:11,color:"#94a3b8"}}>{monthPaid.length} paid</div>
           </div>
         </div>
@@ -906,10 +1095,7 @@ export default function App() {
             <div style={{fontSize:12,color:"#94a3b8",marginBottom:8}}>Visited: {fmtDate(v.visitDate)}{v.paymentDate?` · Paid: ${fmtDate(v.paymentDate)}`:""}</div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <span style={{fontWeight:800,fontSize:16,color:v.paymentStatus==="paid"?G:RED}}>{fmtPrice(v.price)}</span>
-              <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                {v.paymentStatus==="unpaid"&&<button style={st.btnSm(G,"#fff")} onClick={()=>openPayModal(v)}>💷 Mark Paid</button>}
-                {v.paymentMethod&&<span style={{fontSize:11,color:"#94a3b8"}}>{v.paymentMethod}</span>}
-              </div>
+              {v.paymentStatus==="unpaid"&&<button style={st.btnSm(G,"#fff")} onClick={()=>openPayModal(v)}>💷 Mark Paid</button>}
             </div>
           </div>
         ))}
@@ -918,8 +1104,19 @@ export default function App() {
     );
   };
 
-  const navItems=[{id:"dashboard",icon:"🏠",label:"Home"},{id:"clients",icon:"👥",label:"Clients"},{id:"revisits",icon:"🔴",label:"Revisits"},{id:"payments",icon:"💷",label:"Payments"}];
-  const pageTitles={dashboard:"moegardens 🌿",clients:"Clients",revisits:"Revisits",payments:"Payments"};
+  const navItems=[{id:"dashboard",icon:"🏠",label:"Home"},{id:"clients",icon:"👥",label:"Clients"},{id:"calendar",icon:"📅",label:"Calendar"},{id:"revisits",icon:"🔴",label:"Revisits"},{id:"payments",icon:"💷",label:"Payments"}];
+  const pageTitles={dashboard:"moegardens 🌿",clients:"Clients",calendar:"Calendar",revisits:"Revisits",payments:"Payments"};
+
+  const mainContent=()=>{
+    if(selectedBooking) return <BookingDetail b={selectedBooking}/>;
+    if(selected) return <ClientDetail c={selected}/>;
+    if(page==="dashboard") return <Dashboard/>;
+    if(page==="clients") return <ClientList/>;
+    if(page==="calendar") return <Calendar/>;
+    if(page==="revisits") return <Revisits/>;
+    if(page==="payments") return <Payments/>;
+    return <Dashboard/>;
+  };
 
   return (
     <div style={st.app}>
@@ -952,9 +1149,7 @@ export default function App() {
               <div style={{fontSize:28,fontWeight:800,color:G,marginBottom:20}}>{fmtPrice(payModal.price)}</div>
               <div style={st.label}>Payment Method</div>
               <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:20}}>
-                {PAYMENT_METHODS.map(m=>(
-                  <button key={m} onClick={()=>setPayModal(p=>({...p,_method:m}))} style={{...st.btnSm(payModal._method===m?G:"#f1f5f9",payModal._method===m?"#fff":"#64748b")}}>{m}</button>
-                ))}
+                {PAYMENT_METHODS.map(m=><button key={m} onClick={()=>setPayModal(p=>({...p,_method:m}))} style={{...st.btnSm(payModal._method===m?G:"#f1f5f9",payModal._method===m?"#fff":"#64748b")}}>{m}</button>)}
               </div>
               <div style={{display:"flex",gap:10}}>
                 <button style={st.btn(G,"#fff",true)} onClick={confirmPayment}>✅ Confirm Paid</button>
@@ -963,17 +1158,13 @@ export default function App() {
             </div>
           </div>
         )}
-        {selected?<ClientDetail c={selected}/>:
-         page==="dashboard"?<Dashboard/>:
-         page==="clients"?<ClientList/>:
-         page==="revisits"?<Revisits/>:
-         page==="payments"?<Payments/>:<Dashboard/>}
+        {mainContent()}
       </div>
       <div style={st.bottomnav}>
         {navItems.map(n=>(
-          <button key={n.id} style={{...st.navbtn,color:page===n.id?G:"#94a3b8"}} onClick={()=>{setSelected(null);setPage(n.id);}}>
-            <span style={{fontSize:22}}>{n.icon}</span>
-            <span style={{fontSize:10,fontWeight:700}}>{n.label}</span>
+          <button key={n.id} style={{...st.navbtn,color:page===n.id?G:"#94a3b8"}} onClick={()=>{setSelected(null);setSelectedBooking(null);setPage(n.id);}}>
+            <span style={{fontSize:20}}>{n.icon}</span>
+            <span style={{fontSize:9,fontWeight:700}}>{n.label}</span>
           </button>
         ))}
       </div>
