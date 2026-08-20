@@ -21,6 +21,14 @@ const db = {
   async saveDirectorTransaction(t) { await fetch(`${SUPABASE_URL}/rest/v1/director_transactions`,{method:"POST",headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${SUPABASE_KEY}`,"Content-Type":"application/json",Prefer:"resolution=merge-duplicates"},body:JSON.stringify({id:t.id,transaction_date:t.date,amount:t.amount,direction:t.direction,classification:t.classification||"unclassified",notes:t.notes||"",status:t.status||"needs_classification"})}); },
   async getTaxRules() { const r=await fetch(`${SUPABASE_URL}/rest/v1/tax_rules`,{headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${SUPABASE_KEY}`}}); return r.json(); },
   async saveAuditEvent(e) { await fetch(`${SUPABASE_URL}/rest/v1/audit_events`,{method:"POST",headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${SUPABASE_KEY}`,"Content-Type":"application/json"},body:JSON.stringify({id:e.id,event_type:e.eventType,entity_type:e.entityType,entity_id:e.entityId,previous_value:e.previousValue||null,new_value:e.newValue||null,notes:e.notes||""})}); },
+  async uploadStatement(file, importId) { const filePath = `${importId}_${file.name}`; const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/statements/${filePath}`, { method: "POST", headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": file.type || "application/pdf" }, body: file }); if (!uploadRes.ok) throw new Error("Upload failed"); return filePath; },
+  async createPendingImport(imp) { await fetch(`${SUPABASE_URL}/rest/v1/pending_imports`, { method: "POST", headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" }, body: JSON.stringify({ id: imp.id, file_name: imp.fileName, file_path: imp.filePath, status: "processing" }) }); },
+  async callParseFunction(filePath, importId) { const res = await fetch(`${SUPABASE_URL}/functions/v1/parse-statement`, { method: "POST", headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ filePath, importId }) }); return res.json(); },
+  async getPendingImports() { const r = await fetch(`${SUPABASE_URL}/rest/v1/pending_imports?order=uploaded_at.desc`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }); return r.json(); },
+  async getPendingTransactions(importId) { const r = await fetch(`${SUPABASE_URL}/rest/v1/pending_transactions?import_id=eq.${importId}&order=transaction_date.desc`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }); return r.json(); },
+  async updatePendingTransaction(id, updates) { await fetch(`${SUPABASE_URL}/rest/v1/pending_transactions?id=eq.${id}`, { method: "PATCH", headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify(updates) }); },
+  async deletePendingTransaction(id) { await fetch(`${SUPABASE_URL}/rest/v1/pending_transactions?id=eq.${id}`, { method: "DELETE", headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }); },
+  async approveImport(importId, approvedRows) { for (const row of approvedRows) { const txId = makeId(); await fetch(`${SUPABASE_URL}/rest/v1/transactions`, { method: "POST", headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ id: txId, account_id: "acc_bank", transaction_date: row.transaction_date, description_raw: row.description_raw, merchant_normalised: row.merchant_normalised, amount: row.amount, direction: row.direction, reference: row.final_category, status: "approved" }) }); } await fetch(`${SUPABASE_URL}/rest/v1/pending_imports?id=eq.${importId}`, { method: "PATCH", headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ status: "completed", total_approved: approvedRows.length }) }); },
 };
 
 const fromDb=(c)=>({id:c.id,source:c.source,name:c.name,address:c.address||"",phone:c.phone||"",email:c.email||"",area:c.area||"",jobType:c.job_type||"Garden Maintenance",price:c.price,frequency:c.frequency||"Every 2 Weeks",lastVisit:c.last_visit||"",confirmationStatus:c.confirmation_status||"confirmed",isPaused:c.is_paused||false,notes:c.notes||"",accessNotes:c.access_notes||"",duration:c.duration||60,chrisCut:c.chris_cut||false,active:c.active!==false,visitHistory:c.visit_history||[],tags:c.tags||[],preferredContact:c.preferred_contact||"phone"});
@@ -29,6 +37,7 @@ const bookingFromDb=(b)=>({id:b.id,clientId:b.client_id,clientName:b.client_name
 const txFromDb=(t)=>({id:t.id,accountId:t.account_id,date:t.transaction_date,description:t.description_raw||"",merchant:t.merchant_normalised||"",amount:t.amount,direction:t.direction,status:t.status||"imported",reference:t.reference||""});
 const cashFromDb=(t)=>({id:t.id,date:t.transaction_date,description:t.description||"",amount:t.amount,direction:t.direction,category:t.category||"",notes:t.notes||""});
 const directorFromDb=(t)=>({id:t.id,date:t.transaction_date,amount:t.amount,direction:t.direction,classification:t.classification||"unclassified",notes:t.notes||"",status:t.status||"needs_classification"});
+const pendingTxFromDb=(t)=>({id:t.id,importId:t.import_id,date:t.transaction_date,description:t.description_raw||"",merchant:t.merchant_normalised||"",amount:t.amount,direction:t.direction,suggestedCategory:t.suggested_category||"Unknown",confidence:t.confidence||0,finalCategory:t.final_category||t.suggested_category||"Unknown",status:t.status||"pending"});
 
 const G="#1a6b3c",AMBER="#f59e0b",RED="#dc2626",ORANGE="#ea580c",BLUE="#3b82f6",PURPLE="#7c3aed";
 const PIN="2607";
@@ -70,6 +79,7 @@ const sortByUrgency=(list)=>[...list].sort((a,b)=>{const ai=URGENCY.indexOf(a.vi
 
 const STATUS_CFG={"overdue":{color:RED,bg:"#fee2e2",icon:"🔴",label:"Overdue"},"due-today":{color:ORANGE,bg:"#fff7ed",icon:"🟠",label:"Due Today"},"due-soon":{color:AMBER,bg:"#fffbeb",icon:"🟡",label:"Due Soon"},"not-due":{color:G,bg:"#f0fdf4",icon:"🟢",label:"Not Due Yet"},"pending-confirmation":{color:"#6366f1",bg:"#eef2ff",icon:"⏳",label:"Needs Confirmation"},"paused":{color:"#94a3b8",bg:"#f8fafc",icon:"⏸",label:"Paused"},"no-date":{color:"#94a3b8",bg:"#f8fafc",icon:"📅",label:"No Date Set"},"one-off":{color:BLUE,bg:"#eff6ff",icon:"1️⃣",label:"One-off"}};
 const PAY_CFG={unpaid:{color:RED,bg:"#fee2e2",label:"Unpaid"},paid:{color:"#16a34a",bg:"#dcfce7",label:"Paid"},"part-paid":{color:AMBER,bg:"#fef9c3",label:"Part Paid"},waived:{color:"#94a3b8",bg:"#f1f5f9",label:"Waived"}};
+const IMPORT_CFG={unpaid:{color:RED,bg:"#fee2e2"},pending:{color:AMBER,bg:"#fffbeb"},approved:{color:"#16a34a",bg:"#dcfce7"}};
 
 const st={
   app:{fontFamily:"-apple-system,BlinkMacSystemFont,system-ui,sans-serif",background:"#f8fafc",minHeight:"100vh",paddingBottom:84},
@@ -165,7 +175,6 @@ const DEFAULT_CLIENTS=[
   {id:"MG009",source:"MG",name:"poorimitlaprakash",address:"20 Lilybank Road, Ratho Station, EH28",phone:"+44 7448 950184",email:"",area:"Ratho Station",jobType:"Garden Maintenance",price:null,frequency:"Every 2 Weeks",lastVisit:"2026-05-15",confirmationStatus:"pending",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:false,active:true,visitHistory:["2026-05-15"],tags:[],preferredContact:"whatsapp"},
 ];
 const blankClient=(count)=>({id:`MG${String(count+1).padStart(3,"0")}`,source:"MG",name:"",address:"",phone:"",email:"",area:"",jobType:"Garden Maintenance",price:"",frequency:DEFAULT_FREQ,lastVisit:"",confirmationStatus:"confirmed",isPaused:false,notes:"",accessNotes:"",duration:60,chrisCut:false,active:true,visitHistory:[],tags:[],preferredContact:"phone"});
-
 export default function App(){
   const [unlocked,setUnlocked]=useState(false);
   const [rawClients,setRawClients]=useState([]);
@@ -175,6 +184,10 @@ export default function App(){
   const [cashTx,setCashTx]=useState([]);
   const [directorTx,setDirectorTx]=useState([]);
   const [taxRules,setTaxRules]=useState([]);
+  const [pendingImports,setPendingImports]=useState([]);
+  const [reviewImport,setReviewImport]=useState(null);
+  const [reviewRows,setReviewRows]=useState([]);
+  const [uploadStatus,setUploadStatus]=useState("");
   const [loading,setLoading]=useState(true);
   const [page,setPage]=useState("dashboard");
   const [search,setSearch]=useState("");
@@ -218,12 +231,10 @@ export default function App(){
   const todayBookings=bookings.filter(b=>b.date===TODAY&&b.status!=="cancelled");
   const upcomingBookings=bookings.filter(b=>b.date>TODAY&&b.status==="scheduled").sort((a,b)=>a.date.localeCompare(b.date));
 
-  // ── FINANCE CALCULATIONS ──
   const taxYearStart=getTaxYearStart();
   const taxYearEnd=getTaxYearEnd();
   const rule=(key)=>taxRules.find(r=>r.rule_key===key)?.value;
 
-  const incomeCategories=["Gardening Income","Landscaping Income","Maintenance Income","Other Trading Income"];
   const yearTx=transactions.filter(t=>t.date>=taxYearStart&&t.date<=taxYearEnd);
   const yearCash=cashTx.filter(t=>t.date>=taxYearStart&&t.date<=taxYearEnd);
 
@@ -254,7 +265,6 @@ export default function App(){
   const estimatedTax=calcCorpTax(grossProfit);
   const taxReserve=Math.round(estimatedTax*1.1);
 
-  // Rolling 12-month VAT turnover
   const twelveMonthsAgo=addDays(TODAY,-365);
   const rollingIncome=transactions.filter(t=>t.direction==="credit"&&t.date>=twelveMonthsAgo).reduce((s,t)=>s+(t.amount||0),0)
     +cashTx.filter(t=>t.direction==="in"&&t.date>=twelveMonthsAgo).reduce((s,t)=>s+(t.amount||0),0)
@@ -266,15 +276,14 @@ export default function App(){
     if(t.direction==="director_to_company") return s+(t.amount||0);
     return s-(t.amount||0);
   },0);
-
   useEffect(()=>{
     if(!unlocked) return;
     const load=async()=>{
       setLoading(true);
       try{
-        const [dbC,dbV,dbB,dbT,dbCash,dbDir,dbRules]=await Promise.all([
+        const [dbC,dbV,dbB,dbT,dbCash,dbDir,dbRules,dbImports]=await Promise.all([
           db.getClients(),db.getVisits(),db.getBookings(),
-          db.getTransactions(),db.getCashTransactions(),db.getDirectorTransactions(),db.getTaxRules()
+          db.getTransactions(),db.getCashTransactions(),db.getDirectorTransactions(),db.getTaxRules(),db.getPendingImports()
         ]);
         if(dbC&&dbC.length>0){setRawClients(dbC.map(fromDb));}
         else{for(const c of DEFAULT_CLIENTS){await db.saveClient(c);}setRawClients(DEFAULT_CLIENTS);}
@@ -284,6 +293,7 @@ export default function App(){
         if(dbCash&&dbCash.length>0) setCashTx(dbCash.map(cashFromDb));
         if(dbDir&&dbDir.length>0) setDirectorTx(dbDir.map(directorFromDb));
         if(dbRules&&dbRules.length>0) setTaxRules(dbRules);
+        if(dbImports&&dbImports.length>0) setPendingImports(dbImports);
       }catch(e){showToast("Connection error","error");setRawClients(DEFAULT_CLIENTS);}
       setLoading(false);
     };
@@ -360,6 +370,79 @@ export default function App(){
     setAddingTx(false); setTxForm(null); showToast("✅ Transaction saved!");
   };
 
+  const handleStatementUpload=async(e)=>{
+    const file=e.target.files?.[0];
+    if(!file) return;
+    e.target.value="";
+    setUploadStatus("Uploading...");
+    try{
+      const importId=makeId();
+      const filePath=await db.uploadStatement(file,importId);
+      await db.createPendingImport({id:importId,fileName:file.name,filePath});
+      setUploadStatus("Reading statement...");
+      const result=await db.callParseFunction(filePath,importId);
+      if(result.success){
+        setUploadStatus("");
+        showToast(`✅ Found ${result.count} transactions — review now`);
+        const dbImports=await db.getPendingImports();
+        setPendingImports(dbImports);
+        const imp=dbImports.find(i=>i.id===importId);
+        if(imp) openReview(imp);
+      } else {
+        setUploadStatus("");
+        showToast("Extraction failed — try again","error");
+      }
+    }catch(err){
+      setUploadStatus("");
+      showToast("Upload failed: "+err.message,"error");
+    }
+  };
+
+  const openReview=async(imp)=>{
+    const rows=await db.getPendingTransactions(imp.id);
+    setReviewRows(rows.map(pendingTxFromDb));
+    setReviewImport(imp);
+  };
+
+  const updateReviewRow=(id,updates)=>{
+    setReviewRows(prev=>prev.map(r=>r.id===id?{...r,...updates}:r));
+  };
+
+  const deleteReviewRow=async(id)=>{
+    setReviewRows(prev=>prev.filter(r=>r.id!==id));
+    await db.deletePendingTransaction(id);
+  };
+
+  const saveReviewRowEdit=async(row)=>{
+    await db.updatePendingTransaction(row.id,{
+      transaction_date:row.date,
+      description_raw:row.description,
+      amount:row.amount,
+      direction:row.direction,
+      final_category:row.finalCategory,
+    });
+    showToast("✅ Row updated");
+  };
+
+  const approveAllReview=async()=>{
+    if(!reviewImport) return;
+    const dbRows=reviewRows.map(r=>({
+      transaction_date:r.date,
+      description_raw:r.description,
+      merchant_normalised:r.merchant,
+      amount:r.amount,
+      direction:r.direction,
+      final_category:r.finalCategory,
+    }));
+    await db.approveImport(reviewImport.id,dbRows);
+    const dbTx=await db.getTransactions();
+    setTransactions(dbTx.map(txFromDb));
+    const dbImports=await db.getPendingImports();
+    setPendingImports(dbImports);
+    setReviewImport(null);
+    setReviewRows([]);
+    showToast(`✅ ${dbRows.length} transactions imported!`);
+  };
   if(!unlocked) return <LockScreen onUnlock={()=>setUnlocked(true)}/>;
   if(loading) return <div style={{minHeight:"100vh",background:"#f8fafc",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}><div style={{fontSize:48}}>🌿</div><div style={{fontWeight:700,fontSize:16,color:G}}>Loading moegardens...</div></div>;
   if(addingClient) return <div style={st.app}><div style={st.content}><ClientForm key="add" initialData={blankClient(rawClients.length)} onSave={saveClient} onCancel={()=>setAddingClient(false)} title="New Client"/></div></div>;
@@ -397,6 +480,34 @@ export default function App(){
           <TextArea label="Notes (optional)" value={f.notes} onChange={setF("notes")}/>
         </div>
         <button style={{...st.btn(G,"#fff",true),padding:"14px",fontSize:15,borderRadius:14,marginBottom:16}} onClick={()=>saveTransaction(f)}>Save Transaction</button>
+      </div></div>
+    );
+  }
+
+  if(reviewImport){
+    const totalAmt=reviewRows.reduce((s,r)=>s+(r.direction==="debit"?r.amount:0),0);
+    const incomeAmt=reviewRows.reduce((s,r)=>s+(r.direction==="credit"?r.amount:0),0);
+    const highConf=reviewRows.filter(r=>r.confidence>=70).length;
+    return (
+      <div style={st.app}><div style={st.content}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+          <button style={st.btnSm("#f1f5f9","#0f172a")} onClick={()=>{setReviewImport(null);setReviewRows([]);}}>← Back</button>
+          <div style={{fontSize:18,fontWeight:800}}>Review Import</div>
+        </div>
+        <div style={{...st.card,borderLeft:`4px solid ${AMBER}`}}>
+          <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>{reviewImport.file_name}</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+            <div style={{textAlign:"center"}}><div style={{fontSize:10,color:"#94a3b8",fontWeight:700}}>TRANSACTIONS</div><div style={{fontSize:18,fontWeight:800}}>{reviewRows.length}</div></div>
+            <div style={{textAlign:"center"}}><div style={{fontSize:10,color:"#94a3b8",fontWeight:700}}>SPENT</div><div style={{fontSize:16,fontWeight:800,color:RED}}>{fmtGBP(totalAmt)}</div></div>
+            <div style={{textAlign:"center"}}><div style={{fontSize:10,color:"#94a3b8",fontWeight:700}}>IN</div><div style={{fontSize:16,fontWeight:800,color:"#16a34a"}}>{fmtGBP(incomeAmt)}</div></div>
+          </div>
+        </div>
+        <button style={{...st.btn(G,"#fff",true),borderRadius:12,padding:"13px",marginBottom:14}} onClick={approveAllReview}>✅ Approve All {reviewRows.length} & Import</button>
+        <div style={{fontSize:12,color:"#94a3b8",marginBottom:12,textAlign:"center"}}>Tap any transaction to edit before approving</div>
+        {reviewRows.map(r=>(
+          <ReviewRow key={r.id} row={r} onUpdate={updateReviewRow} onSave={saveReviewRowEdit} onDelete={deleteReviewRow}/>
+        ))}
+        {reviewRows.length===0&&<div style={{textAlign:"center",padding:"40px 0",color:"#94a3b8"}}>No transactions extracted</div>}
       </div></div>
     );
   }
@@ -455,6 +566,41 @@ export default function App(){
       </div>
     );
   };
+  const ReviewRow=({row,onUpdate,onSave,onDelete})=>{
+    const [expanded,setExpanded]=useState(false);
+    const [local,setLocal]=useState(row);
+    const confColor=local.confidence>=70?"#16a34a":local.confidence>=40?AMBER:RED;
+    const handleSave=()=>{onUpdate(row.id,local);onSave(local);setExpanded(false);};
+    return (
+      <div style={{...st.card,marginBottom:8,borderLeft:`3px solid ${confColor}`}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6,cursor:"pointer"}} onClick={()=>setExpanded(p=>!p)}>
+          <div style={{flex:1,paddingRight:8}}>
+            <div style={{fontWeight:700,fontSize:14}}>{row.description.slice(0,40)}</div>
+            <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>{fmtDate(row.date)} · {row.finalCategory}</div>
+          </div>
+          <span style={{fontWeight:800,fontSize:15,color:row.direction==="credit"?"#16a34a":RED}}>{row.direction==="credit"?"+":"−"}{fmtGBP(row.amount)}</span>
+        </div>
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          <span style={st.badge(confColor,`${confColor}18`)}>{row.confidence>=70?"High":row.confidence>=40?"Medium":"Low"} confidence</span>
+          <button style={{...st.btnSm("#f1f5f9","#64748b"),marginLeft:"auto"}} onClick={()=>setExpanded(p=>!p)}>{expanded?"Close":"Edit"}</button>
+          <button style={st.btnSm("#fee2e2",RED)} onClick={()=>onDelete(row.id)}>🗑</button>
+        </div>
+        {expanded&&(
+          <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid #f1f5f9"}}>
+            <TextInput label="Description" value={local.description} onChange={v=>setLocal(p=>({...p,description:v}))}/>
+            <TextInput label="Date" value={local.date} onChange={v=>setLocal(p=>({...p,date:v}))} type="date"/>
+            <TextInput label="Amount (£)" value={String(pounds(local.amount))} onChange={v=>setLocal(p=>({...p,amount:pence(parseFloat(v)||0)}))} type="number"/>
+            <div style={{display:"flex",gap:8,marginBottom:14}}>
+              <button onClick={()=>setLocal(p=>({...p,direction:"credit"}))} style={{...st.btn(local.direction==="credit"?"#16a34a":"#f1f5f9",local.direction==="credit"?"#fff":"#64748b",true),borderRadius:10}}>Money In</button>
+              <button onClick={()=>setLocal(p=>({...p,direction:"debit"}))} style={{...st.btn(local.direction==="debit"?RED:"#f1f5f9",local.direction==="debit"?"#fff":"#64748b",true),borderRadius:10}}>Money Out</button>
+            </div>
+            <SelectInput label="Category" value={local.finalCategory} onChange={v=>setLocal(p=>({...p,finalCategory:v}))} options={TX_CATEGORIES}/>
+            <button style={{...st.btn(G,"#fff",true),borderRadius:10,padding:"11px"}} onClick={handleSave}>Save Changes</button>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const Finance=()=>{
     const allTx=[
@@ -473,6 +619,23 @@ export default function App(){
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
           <div style={st.card}><div style={{fontSize:11,fontWeight:700,color:"#16a34a",textTransform:"uppercase",marginBottom:4}}>Income</div><div style={{fontSize:24,fontWeight:800,color:"#16a34a"}}>{fmtGBP(totalIncome)}</div></div>
           <div style={st.card}><div style={{fontSize:11,fontWeight:700,color:RED,textTransform:"uppercase",marginBottom:4}}>Expenses</div><div style={{fontSize:24,fontWeight:800,color:RED}}>{fmtGBP(totalExpenses)}</div></div>
+        </div>
+
+        <div style={st.card}>
+          <div style={st.secTitle}>📄 Bank Statement</div>
+          <button style={{...st.btn(BLUE,"#fff",true),borderRadius:12,padding:"14px",fontSize:14,marginBottom:8}} onClick={()=>document.getElementById("statement-upload-input").click()}>📤 Upload Tide Statement (PDF)</button>
+          <input id="statement-upload-input" type="file" accept="application/pdf" style={{display:"none"}} onChange={handleStatementUpload}/>
+          {uploadStatus&&<div style={{fontSize:12,color:"#64748b",textAlign:"center",marginTop:6}}>{uploadStatus}</div>}
+          {pendingImports.filter(i=>i.status==="review").length>0&&(
+            <div style={{marginTop:10}}>
+              {pendingImports.filter(i=>i.status==="review").map(imp=>(
+                <div key={imp.id} style={{...st.row,cursor:"pointer"}} onClick={()=>openReview(imp)}>
+                  <div><div style={{fontWeight:700,fontSize:13}}>{imp.file_name}</div><div style={{fontSize:11,color:"#94a3b8"}}>{imp.total_extracted} transactions to review</div></div>
+                  <span style={st.badge(AMBER,"#fffbeb")}>Review →</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div style={{...st.card,borderLeft:`4px solid ${PURPLE}`}}>
@@ -594,7 +757,6 @@ export default function App(){
       </div>
     );
   };
-
   const Calendar=()=>{
     const weekDates=getWeekDates(calOffset);
     const forDate=(d)=>bookings.filter(b=>b.date===d&&b.status!=="cancelled");
@@ -825,7 +987,6 @@ export default function App(){
       </div>
     );
   };
-
   const navItems=[
     {id:"dashboard",icon:"🏠",label:"Home"},
     {id:"clients",icon:"👥",label:"Clients"},
